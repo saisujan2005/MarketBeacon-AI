@@ -5,24 +5,29 @@ from app.models.notification import Notification
 
 router = APIRouter()
 
+
 @router.get("/notifications")
 def get_notifications():
 
     db = SessionLocal()
 
-    notifications = (
-        db.query(Notification)
-        .order_by(
-            Notification.created_at.desc()
+    try:
+        notifications = (
+            db.query(Notification)
+            .order_by(
+                Notification.created_at.desc()
+            )
+            .all()
         )
-        .all()
-    )
 
-    return [
-        {
-            "keyword": n.keyword,
-            "title": n.title,
-            "is_read": n.is_read
-        }
-        for n in notifications
-    ]
+        return [
+            {
+                "keyword": n.keyword,
+                "title": n.title,
+                "is_read": n.is_read
+            }
+            for n in notifications
+        ]
+
+    finally:
+        db.close()

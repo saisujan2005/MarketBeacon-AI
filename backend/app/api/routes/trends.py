@@ -11,13 +11,17 @@ def get_trends():
 
     db = SessionLocal()
 
-    posts = db.query(Post).all()
+    try:
+        posts = db.query(Post).all()
 
-    counts = Counter(
-        [
-            post.event_type
-            for post in posts
-        ]
-    )
+        counts = Counter(
+            [
+                post.event_type
+                for post in posts
+            ]
+        )
 
-    return dict(counts)
+        return dict(counts)
+
+    finally:
+        db.close()

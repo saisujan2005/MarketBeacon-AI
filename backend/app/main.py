@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.api.sources import router as source_router
+from fastapi.middleware.cors import CORSMiddleware
 from app.api.posts import router as post_router
 from app.api.routes.ask import router as ask_router
 from app.api.routes.notifications import (
@@ -15,9 +16,18 @@ from app.api.routes.market_summary import (
     router as market_summary_router
 )
 
-
 app = FastAPI(
     title="MarketBeacon AI"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(
