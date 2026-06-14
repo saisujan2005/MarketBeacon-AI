@@ -16,6 +16,11 @@ from app.api.routes.market_summary import (
     router as market_summary_router
 )
 
+from app.api.routes.watchlists import (
+    router as watchlist_router
+)
+
+
 app = FastAPI(
     title="MarketBeacon AI"
 )
@@ -45,6 +50,10 @@ app.include_router(
 
 app.include_router(
     market_summary_router
+)
+
+app.include_router(
+    watchlist_router
 )
 
 app.include_router(alert_router)

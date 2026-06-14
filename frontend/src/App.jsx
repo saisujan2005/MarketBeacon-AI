@@ -14,6 +14,9 @@ function App() {
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [watchlists, setWatchlists] = useState([]);
+  const [newKeyword, setNewKeyword] = useState("");
+
   useEffect(() => {
 
   api.get("/alerts")
@@ -35,6 +38,14 @@ function App() {
     .then((response) => {
       setNotifications(response.data);
     });
+
+  api.get("/watchlists")
+  .then((response) => {
+    setWatchlists(response.data);
+  })
+  .catch((error) => {
+    console.error(error);
+  });  
 
 }, []);
 
@@ -61,6 +72,47 @@ function App() {
 
   setLoading(false);
 };  
+
+  const addWatchlist = async () => {
+
+  if (!newKeyword.trim()) return;
+
+  try {
+
+    await api.post("/watchlists", {
+      keyword: newKeyword
+    });
+
+    const response = await api.get("/watchlists");
+
+    setWatchlists(response.data);
+
+    setNewKeyword("");
+
+  } catch (error) {
+
+    console.error(error);
+
+  }
+};
+
+
+const deleteWatchlist = async (id) => {
+
+  try {
+
+    await api.delete(`/watchlists/${id}`);
+
+    const response = await api.get("/watchlists");
+
+    setWatchlists(response.data);
+
+  } catch (error) {
+
+    console.error(error);
+
+  }
+};
 
   return (
   <div className="min-h-screen bg-slate-100 p-8">
@@ -210,6 +262,59 @@ function App() {
 
     </div>
   )}
+
+</div>
+
+    <div className="mt-10 bg-white rounded-xl shadow-lg p-6">
+
+  <h2 className="text-2xl font-bold mb-4">
+    ⭐ Watchlists
+  </h2>
+
+  <div className="flex gap-4 mb-6">
+
+    <input
+      type="text"
+      value={newKeyword}
+      onChange={(e) => setNewKeyword(e.target.value)}
+      placeholder="Add keyword..."
+      className="border rounded-lg p-3 flex-1"
+    />
+
+    <button
+      onClick={addWatchlist}
+      className="bg-green-600 text-white px-4 py-2 rounded-lg"
+    >
+      Add
+    </button>
+
+  </div>
+
+  <div className="grid md:grid-cols-3 gap-4">
+
+    {watchlists.map((item) => (
+
+      <div
+        key={item.id}
+        className="bg-slate-100 rounded-lg p-4 flex justify-between items-center"
+      >
+
+        <span className="font-semibold">
+          {item.keyword}
+        </span>
+
+        <button
+          onClick={() => deleteWatchlist(item.id)}
+          className="bg-red-500 text-white px-3 py-1 rounded"
+        >
+          Delete
+        </button>
+
+      </div>
+
+    ))}
+
+  </div>
 
 </div>
 
