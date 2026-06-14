@@ -10,40 +10,57 @@ function App() {
 
   const [notifications, setNotifications] = useState([]);
 
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
+
   api.get("/alerts")
     .then((response) => {
-      console.log("ALERT DATA:", response.data);
       setAlerts(response.data);
-    })
-    .catch((error) => {
-      console.error(error);
     });
-}, []);
 
   api.get("/market-summary")
-  .then((response) => {
-    setSummary(response.data.summary || []);
-  })
-  .catch((error) => {
-    console.error(error);
-  });
+    .then((response) => {
+      setSummary(response.data.summary || []);
+    });
 
   api.get("/trends")
-  .then((response) => {
-    setTrends(response.data);
-  })
-  .catch((error) => {
-    console.error(error);
-  });
+    .then((response) => {
+      setTrends(response.data);
+    });
 
   api.get("/notifications")
-  .then((response) => {
-    setNotifications(response.data);
-  })
-  .catch((error) => {
+    .then((response) => {
+      setNotifications(response.data);
+    });
+
+}, []);
+
+
+  const askMarketBeacon = async () => {
+
+  if (!question.trim()) return;
+
+  setLoading(true);
+
+  try {
+
+    const response = await api.post("/ask", {
+      question: question
+    });
+
+    setAnswer(response.data.answer);
+
+  } catch (error) {
+
     console.error(error);
-  });
+
+  }
+
+  setLoading(false);
+};  
 
   return (
   <div className="min-h-screen bg-slate-100 p-8">
@@ -194,7 +211,42 @@ function App() {
     </div>
   )}
 
-</div>  
+</div>
+
+    <div className="mt-10 bg-white rounded-xl shadow-lg p-6">
+
+  <h2 className="text-2xl font-bold mb-4">
+    🤖 Ask MarketBeacon
+  </h2>
+
+  <input
+    type="text"
+    value={question}
+    onChange={(e) => setQuestion(e.target.value)}
+    placeholder="Ask about markets..."
+    className="w-full border rounded-lg p-3 mb-4"
+  />
+
+  <button
+    onClick={askMarketBeacon}
+    className="bg-blue-600 text-white px-6 py-2 rounded-lg"
+  >
+    Ask
+  </button>
+
+  {loading && (
+    <p className="mt-4">
+      Thinking...
+    </p>
+  )}
+
+  {answer && (
+    <div className="mt-4 p-4 bg-slate-100 rounded-lg">
+      {answer}
+    </div>
+  )}
+
+</div>
 
      
 

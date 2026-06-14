@@ -12,10 +12,7 @@ def ask_llm(prompt):
             "model": "qwen3:4b",
             "prompt": prompt,
             "stream": False,
-
-            # Disable reasoning mode
             "think": False,
-
             "options": {
                 "num_predict": 300,
                 "temperature": 0.3
@@ -30,11 +27,17 @@ def ask_llm(prompt):
     print(data)
     print("===========================\n")
 
+    answer = data.get(
+        "response",
+        "No response returned from Ollama"
+    )
+
+    # Remove reasoning if present
+    if "</think>" in answer:
+        answer = answer.split("</think>")[-1].strip()
+
     print(
         f"LLM Time: {time.time() - start:.2f} sec"
     )
 
-    return data.get(
-        "response",
-        "No response returned from Ollama"
-    )
+    return answer
