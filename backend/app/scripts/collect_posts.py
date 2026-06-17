@@ -20,106 +20,37 @@ logger = logging.getLogger(__name__)
 
 RSS_FEEDS = [
 
-    # ── Indian News Outlets ───────────────────────────────────────────────────
-    {
-        "source_id": "ndtv_profit",
-        "feed_url": "https://feeds.feedburner.com/ndtvprofit-latest",
-    },
-    {
-        "source_id": "economic_times_markets",
-        "feed_url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
-    },
-    {
-        "source_id": "moneycontrol",
-        "feed_url": "https://www.moneycontrol.com/rss/latestnews.xml",
-    },
-    {
-        "source_id": "livemint_markets",
-        "feed_url": "https://www.livemint.com/rss/markets",
-    },
-    {
-        "source_id": "financial_express_markets",
-        "feed_url": "https://www.financialexpress.com/market/feed/",
-    },
-    {
-        "source_id": "business_standard_markets",
-        "feed_url": "https://www.business-standard.com/rss/markets-106.rss",
-    },
+    # ── Direct news feeds — mixed topics, up to 15 articles ──────────────────
+    {"source_id": "ndtv_profit",             "feed_url": "https://feeds.feedburner.com/ndtvprofit-latest",                                                                    "max": 15},
+    {"source_id": "economic_times_markets",  "feed_url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",                                              "max": 15},
+    {"source_id": "livemint_markets",        "feed_url": "https://www.livemint.com/rss/markets",                                                                              "max": 15},
+    {"source_id": "livemint_economy",        "feed_url": "https://www.livemint.com/rss/economy",                                                                              "max": 10},
+    {"source_id": "hindu_business",          "feed_url": "https://www.thehindubusinessline.com/markets/feeder/default.rss",                                                   "max": 15},
+    {"source_id": "bloomberg_markets",       "feed_url": "https://feeds.bloomberg.com/markets/news.rss",                                                                      "max": 15},
+    {"source_id": "ft_markets",              "feed_url": "https://www.ft.com/markets?format=rss",                                                                             "max": 10},
+    {"source_id": "federal_reserve",         "feed_url": "https://www.federalreserve.gov/feeds/press_all.xml",                                                                "max": 10},
+    {"source_id": "cnbc_markets",            "feed_url": "https://www.cnbc.com/id/20910258/device/rss/rss.html",                                                              "max": 15},
+    {"source_id": "wsj_markets",             "feed_url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",                                                                    "max": 15},
+    {"source_id": "marketwatch",             "feed_url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse",                                                      "max": 15},
+    {"source_id": "coindesk",                "feed_url": "https://www.coindesk.com/arc/outboundfeeds/rss/",                                                                   "max": 10},
+    {"source_id": "cointelegraph",           "feed_url": "https://cointelegraph.com/rss",                                                                                     "max": 10},
 
-    # ── Indian Regulatory & Official ──────────────────────────────────────────
-    {
-        "source_id": "rbi",
-        "feed_url": "https://www.rbi.org.in/scripts/rss.aspx",
-    },
-    {
-        "source_id": "sebi",
-        "feed_url": "https://www.sebi.gov.in/sebi_data/rss/rss.xml",
-    },
-    {
-        "source_id": "pib_finance",
-        "feed_url": "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3",
-    },
-    {
-        "source_id": "bse_india",
-        "feed_url": "https://www.bseindia.com/xml-data/corpfiling/AttachHis/rss.xml",
-    },
-
-    # ── Global News Outlets ───────────────────────────────────────────────────
-    {
-        "source_id": "reuters_business",
-        "feed_url": "https://feeds.reuters.com/reuters/businessNews",
-    },
-    {
-        "source_id": "reuters_markets",
-        "feed_url": "https://feeds.reuters.com/reuters/marketsNews",
-    },
-    {
-        "source_id": "bloomberg_markets",
-        "feed_url": "https://feeds.bloomberg.com/markets/news.rss",
-    },
-    {
-        "source_id": "ft_markets",
-        "feed_url": "https://www.ft.com/markets?format=rss",
-    },
-
-    # ── Wall Street & US Official ─────────────────────────────────────────────
-    {
-        "source_id": "federal_reserve",
-        "feed_url": "https://www.federalreserve.gov/feeds/press_all.xml",
-    },
-    {
-        "source_id": "sec_press",
-        "feed_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=&dateb=&owner=include&count=10&search_text=&output=atom",
-    },
-    {
-        "source_id": "cnbc_markets",
-        "feed_url": "https://www.cnbc.com/id/20910258/device/rss/rss.html",
-    },
-    {
-        "source_id": "wsj_markets",
-        "feed_url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
-    },
-    {
-        "source_id": "marketwatch",
-        "feed_url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse",
-    },
-
-    # ── Crypto ────────────────────────────────────────────────────────────────
-    {
-        "source_id": "coindesk",
-        "feed_url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
-    },
-    {
-        "source_id": "cointelegraph",
-        "feed_url": "https://cointelegraph.com/rss",
-    },
+    # ── Google News — topic-locked, limit to 5 to avoid flooding ─────────────
+    {"source_id": "gnews_indian_markets",    "feed_url": "https://news.google.com/rss/search?q=NSE+BSE+nifty+sensex&hl=en-IN&gl=IN&ceid=IN:en",                             "max": 5},
+    {"source_id": "gnews_rbi",               "feed_url": "https://news.google.com/rss/search?q=RBI+reserve+bank+india&hl=en-IN&gl=IN&ceid=IN:en",                           "max": 5},
+    {"source_id": "gnews_sebi",              "feed_url": "https://news.google.com/rss/search?q=SEBI+regulation+india&hl=en-IN&gl=IN&ceid=IN:en",                            "max": 5},
+    {"source_id": "gnews_fed",               "feed_url": "https://news.google.com/rss/search?q=federal+reserve+interest+rate&hl=en-US&gl=US&ceid=US:en",                    "max": 5},
+    {"source_id": "gnews_wallstreet",        "feed_url": "https://news.google.com/rss/search?q=wall+street+stock+market&hl=en-US&gl=US&ceid=US:en",                         "max": 5},
+    {"source_id": "gnews_crypto",            "feed_url": "https://news.google.com/rss/search?q=bitcoin+crypto+market&hl=en-US&gl=US&ceid=US:en",                            "max": 5},
+    {"source_id": "gnews_commodities",       "feed_url": "https://news.google.com/rss/search?q=gold+oil+commodity+market&hl=en-US&gl=US&ceid=US:en",                        "max": 5},
+    {"source_id": "gnews_ipo",               "feed_url": "https://news.google.com/rss/search?q=IPO+india+stock+listing&hl=en-IN&gl=IN&ceid=IN:en",                          "max": 5},
+    {"source_id": "gnews_earnings",          "feed_url": "https://news.google.com/rss/search?q=quarterly+earnings+results+profit&hl=en-US&gl=US&ceid=US:en",                "max": 5},
 ]
 
 
 def main():
     total_articles = 0
 
-    # Step 1: collect — each feed gets its own session
     for feed in RSS_FEEDS:
         logger.info(f"Fetching {feed['source_id']}...")
         db = SessionLocal()
@@ -127,7 +58,8 @@ def main():
             saved = collect_rss_feed(
                 db=db,
                 source_id=feed["source_id"],
-                feed_url=feed["feed_url"]
+                feed_url=feed["feed_url"],
+                max_per_feed=feed["max"]
             )
             logger.info(f"  -> {saved} new articles")
             total_articles += saved
@@ -139,7 +71,6 @@ def main():
 
     logger.info(f"Total new articles: {total_articles}")
 
-    # Step 2: score unscored posts
     db = SessionLocal()
     try:
         logger.info("Scoring posts...")
@@ -151,7 +82,6 @@ def main():
     finally:
         db.close()
 
-    # Step 3: generate alerts
     db = SessionLocal()
     try:
         logger.info("Generating alerts...")
@@ -163,7 +93,6 @@ def main():
     finally:
         db.close()
 
-    # Step 4: generate notifications
     db = SessionLocal()
     try:
         logger.info("Generating notifications...")
