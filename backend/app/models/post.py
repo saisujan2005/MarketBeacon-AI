@@ -1,10 +1,9 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
 
 from app.models.base import Base
-from sqlalchemy import Integer
 
 
 class Post(Base):
@@ -16,10 +15,10 @@ class Post(Base):
         default=uuid.uuid4
     )
 
+    # Plain string — no foreign key needed for RSS sources like "ndtv_profit"
     source_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("sources.id"),
-        nullable=False
+        String,
+        nullable=True
     )
 
     external_id = Column(
@@ -47,6 +46,6 @@ class Post(Base):
     )
 
     importance_score = Column(
-    Integer,
-    nullable=True
-)
+        Integer,
+        nullable=True
+    )

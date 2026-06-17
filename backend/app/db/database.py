@@ -1,7 +1,14 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = "postgresql://postgres:Sujan%402005@localhost:5432/marketbeacon"
+load_dotenv()
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:Sujan%402005@localhost:5432/marketbeacon"
+)
 
 engine = create_engine(DATABASE_URL)
 
@@ -11,11 +18,10 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
+
 def get_db():
     db = SessionLocal()
-
     try:
         yield db
-
     finally:
         db.close()
