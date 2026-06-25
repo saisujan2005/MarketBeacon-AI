@@ -122,10 +122,13 @@ EVENT_KEYWORDS = {
 }
 
 
+import re
+
+
 def detect_event(title: str) -> str:
     """
     Returns the event type for a given article title.
-    Checks all keyword lists in priority order.
+    Checks all keyword lists in priority order with word boundary matching.
     Falls back to 'OTHER' if no match found.
     """
     if not title:
@@ -135,7 +138,8 @@ def detect_event(title: str) -> str:
 
     for event_type, keywords in EVENT_KEYWORDS.items():
         for keyword in keywords:
-            if keyword in title_lower:
+            pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+            if re.search(pattern, title_lower):
                 return event_type
 
     return "OTHER"

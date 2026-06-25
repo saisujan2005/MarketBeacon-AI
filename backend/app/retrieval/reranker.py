@@ -5,9 +5,11 @@ model = CrossEncoder(
 )
 
 def rerank(query, documents):
+    if not documents:
+        return []
 
     pairs = [
-        [query, doc["title"]]
+        [query, doc.get("text", doc["title"])[:500]]  # limit length slightly for speed
         for doc in documents
     ]
 
@@ -18,8 +20,8 @@ def rerank(query, documents):
 
     ranked = sorted(
         documents,
-        key=lambda x: x["rerank_score"],
+        key=lambda x: x.get("rerank_score", 0.0),
         reverse=True
     )
 
-    return ranked
+    return ranked

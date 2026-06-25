@@ -47,7 +47,7 @@ def generate_tweet_summary(handle: str, tweet_text: str, event_type: str) -> str
     Falls back to a simple template if LLM is unavailable.
     """
     try:
-        from app.services.llm_service import query_llm
+        from app.rag.llm_service import ask_llm
 
         prompt = (
             f"@{handle} just tweeted:\n\"{tweet_text}\"\n\n"
@@ -55,7 +55,7 @@ def generate_tweet_summary(handle: str, tweet_text: str, event_type: str) -> str
             f"In 1-2 sentences, explain why this tweet could impact financial markets. "
             f"Be direct and concise. No preamble."
         )
-        return query_llm(prompt)
+        return ask_llm(prompt)
 
     except Exception as e:
         logger.warning(f"LLM summary failed, using fallback: {e}")

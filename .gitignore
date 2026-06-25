@@ -21,3 +21,16 @@ qdrant_data/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Node
+node_modules/
+dist/
+
+# Logs
+*.log
+
+# Backup data
+qdrant_data_backup/
+
+# SQLite (dev accounts db)
+*.db

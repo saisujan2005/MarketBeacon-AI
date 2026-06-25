@@ -1,0 +1,8 @@
+SUCCESS:
+Calling client.search...
+Search failed:
+Traceback (most recent call last):
+  File "d:\MarketBeacon-AI\test_qdrant_search.py", line 14, in <module>
+    res = client.search(
+          ^^^^^^^^^^^^^
+AttributeError: 'QdrantClient' object has no attribute 'search'

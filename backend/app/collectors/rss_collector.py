@@ -70,14 +70,25 @@ def collect_rss_feed(
             if existing_by_title:
                 continue
 
+        published_parsed = article.get("published_parsed")
+        posted_at = None
+        if published_parsed:
+            try:
+                from datetime import datetime
+                posted_at = datetime(*published_parsed[:6])
+            except Exception:
+                pass
+
         event_type = detect_event(title)
 
         post = Post(
             source_id=source_id,
             external_id=link,
             title=title,
+            content=article.get("summary", ""),
             post_url=link,
-            event_type=event_type
+            event_type=event_type,
+            posted_at=posted_at
         )
 
         db.add(post)

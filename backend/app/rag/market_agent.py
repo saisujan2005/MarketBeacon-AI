@@ -1,4 +1,5 @@
 import time
+import logging
 
 from app.rag.retriever import retrieve
 from app.rag.prompt_builder import build_prompt
@@ -8,6 +9,8 @@ from app.rag.judge_agent import (
     judge_response
 )
 
+logger = logging.getLogger(__name__)
+
 
 def answer_question(question):
 
@@ -15,7 +18,7 @@ def answer_question(question):
 
     docs = retrieve(question)
 
-    print(
+    logger.info(
         f"Retrieval: {time.time() - start:.2f} sec"
     )
 
@@ -33,7 +36,7 @@ def answer_question(question):
 
     response = ask_llm(prompt)
 
-    print(
+    logger.info(
         f"Answer Generation: {time.time() - start:.2f} sec"
     )
 
@@ -49,9 +52,9 @@ def answer_question(question):
          retrieval_count=len(docs),
          verification_confidence=
               verification["confidence"]
-)
+    )
 
-    print(
+    logger.info(
         f"Verification: {time.time() - start:.2f} sec"
     )
 
@@ -74,14 +77,6 @@ def answer_question(question):
     return {
         "answer": response,
         "sources": sources,
-        "verification": verification
-     }
-    
-    return {
-        "answer": response,
-        "sources": sources,
         "verification": verification,
         "judge": judge
-}
-
-
+    }
