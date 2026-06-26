@@ -30,7 +30,7 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
         # Robust PDF Stream Fallback (extracts characters enclosed in parenthesis inside TJ/Tj text operators)
         text_parts = []
         # Match PDF text operators like (text) Tj or [ (text1) 10 (text2) ] TJ
-        matches = re.findall(b'\(([^)]+)\)\s*(?:Tj|TJ)', file_bytes)
+        matches = re.findall(br'\(([^)]+)\)\s*(?:Tj|TJ)', file_bytes)
         if matches:
             for m in matches:
                 try:
