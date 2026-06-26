@@ -25,6 +25,7 @@ from app.models.research_cache import CompanyPeerCache, CompanyResearchCache  # 
 from app.models.user import User, UserPreferences  # noqa: F401
 from app.models.holding import Holding  # noqa: F401
 from app.models.research_workspace import ResearchWorkspace  # noqa: F401
+from app.models.push_subscription import PushSubscription  # noqa: F401
 
 
 

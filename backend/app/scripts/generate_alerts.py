@@ -11,6 +11,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
+from app.models.user import User
 from app.models.post import Post
 from app.services.alert_engine import process_post_alerts
 
@@ -23,16 +24,19 @@ def generate_alerts(db: Session) -> int:
     Returns the number of new alerts created.
     """
     posts = db.query(Post).all()
+    users = db.query(User).all()
     count = 0
 
-    for post in posts:
-        # process_post_alerts handles duplicate checking and DB insertions internally
-        alert = process_post_alerts(db, post)
-        if alert:
-            count += 1
+    for user in users:
+        for post in posts:
+            # process_post_alerts handles duplicate checking and DB insertions internally
+            alert = process_post_alerts(db, post, user.id)
+            if alert:
+                count += 1
 
     logger.info(f"generate_alerts: created {count} new smart alerts")
     return count
+
 
 
 # ── manual run ────────────────────────────────────────────────────────────────

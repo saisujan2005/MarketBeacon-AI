@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.services.timeline_service import get_timeline_for_entity, get_timeline_entities
+from app.services.timeline_service import (
+    get_timeline_for_entity,
+    get_timeline_entities,
+    generate_timeline_summary
+)
 
 router = APIRouter()
 
@@ -32,3 +36,13 @@ def get_timeline(entity_name: str, db: Session = Depends(get_db)):
         }
         for e in events
     ]
+
+
+@router.post("/timeline/{entity_name}/summary")
+@router.post("/api/timeline/{entity_name}/summary")
+def get_entity_timeline_summary(entity_name: str, db: Session = Depends(get_db)):
+    """
+    Generates an AI summary of the timeline events for the given entity.
+    """
+    summary = generate_timeline_summary(db, entity_name)
+    return {"summary": summary}

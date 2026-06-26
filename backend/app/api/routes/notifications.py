@@ -150,3 +150,79 @@ Event Type: {notification.event_type or 'OTHER'}
         db.rollback()
         logger.error(f"Failed to generate summary via LLM: {llm_err}")
         raise HTTPException(status_code=500, detail="Unable to generate summary. Please try again.")
+
+
+# ── Browser Web Push Subscription Routes ──────────────────────────────────────────
+
+from app.models.push_subscription import PushSubscription
+from pydantic import BaseModel
+
+class PushSubscriptionPayload(BaseModel):
+    endpoint: str
+    keys: dict
+
+class PushUnsubscribePayload(BaseModel):
+    endpoint: str
+
+
+@router.post("/notifications/push-subscribe")
+@router.post("/api/notifications/push-subscribe")
+def push_subscribe(
+    data: PushSubscriptionPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        # Check if subscription already exists for this endpoint (any user, or this user)
+        existing = db.query(PushSubscription).filter(
+            PushSubscription.endpoint == data.endpoint
+        ).first()
+        
+        p256dh = data.keys.get("p256dh")
+        auth = data.keys.get("auth")
+        
+        if not p256dh or not auth:
+            raise HTTPException(status_code=400, detail="Subscription keys (p256dh, auth) are required")
+            
+        if existing:
+            existing.user_id = current_user.id
+            existing.p256dh = p256dh
+            existing.auth = auth
+        else:
+            new_sub = PushSubscription(
+                user_id=current_user.id,
+                endpoint=data.endpoint,
+                p256dh=p256dh,
+                auth=auth
+            )
+            db.add(new_sub)
+            
+        db.commit()
+        return {"message": "Push notification subscription registered successfully"}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error subscribing to push notifications: {e}")
+        raise HTTPException(status_code=500, detail="Failed to register push subscription")
+
+
+@router.post("/notifications/push-unsubscribe")
+@router.post("/api/notifications/push-unsubscribe")
+def push_unsubscribe(
+    data: PushUnsubscribePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        sub = db.query(PushSubscription).filter(
+            PushSubscription.user_id == current_user.id,
+            PushSubscription.endpoint == data.endpoint
+        ).first()
+        if sub:
+            db.delete(sub)
+            db.commit()
+            return {"message": "Push notification subscription removed successfully"}
+        return {"message": "Subscription not found"}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error unsubscribing from push notifications: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove push subscription")

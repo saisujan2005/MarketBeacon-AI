@@ -565,7 +565,7 @@ def analyze_watchlist_company(db: Session, watchlist_id: uuid.UUID, user_id: uui
             
             new_research = db.query(ResearchDocument).filter(
                 ResearchDocument.user_id == user_id,
-                ResearchDocument.created_at > last_t
+                ResearchDocument.upload_date > last_t
             ).count()
             
             if new_news == 0 and new_alerts == 0 and new_research == 0:
@@ -605,9 +605,9 @@ def analyze_watchlist_company(db: Session, watchlist_id: uuid.UUID, user_id: uui
             
     attn_calc = calculate_attention_score(len(posts), len(alerts), avg_alert_imp, len(research_docs) > 0)
 
-    news_str = "\n".join([f"- News: {p.title} | Sentiment: {p.sentiment} | Date: {p.posted_at.strftime('%d %b %Y %H:%M')}" for p in posts])
-    alerts_str = "\n".join([f"- Alert: {a.title} | Type: {a.event_type} | Importance: {a.importance_score} | Date: {a.created_at.strftime('%d %b %Y %H:%M')}" for a in alerts])
-    research_str = "\n".join([f"- Doc: {rd.title} | Type: {rd.document_type} | Date: {rd.upload_date.strftime('%d %b %Y')}" for rd in research_docs])
+    news_str = "\n".join([f"- News: {p.title} | Sentiment: {p.sentiment} | Date: {p.posted_at.strftime('%d %b %Y %H:%M') if p.posted_at else 'Unknown'}" for p in posts])
+    alerts_str = "\n".join([f"- Alert: {a.title} | Type: {a.event_type} | Importance: {a.importance_score} | Date: {a.created_at.strftime('%d %b %Y %H:%M') if a.created_at else 'Unknown'}" for a in alerts])
+    research_str = "\n".join([f"- Doc: {rd.title} | Type: {rd.document_type} | Date: {rd.upload_date.strftime('%d %b %Y') if rd.upload_date else 'Unknown'}" for rd in research_docs])
 
     prompt = f"""You are a professional Bloomberg-style investment strategist.
 Analyze the company: "{company_name.upper()}" and compile its Watchlist Intelligence Card Record.
@@ -689,6 +689,7 @@ Return ONLY a valid JSON object in this exact format (no other text, no markdown
 
     except Exception as e:
         logger.error(f"[Watchlist Engine] Generation failed for {company_name}: {e}")
+        db.rollback()
         
         # Build local timeline
         timeline = []

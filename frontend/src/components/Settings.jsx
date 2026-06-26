@@ -1,5 +1,17 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import api from "../services/api";
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 export default function Settings() {
   const {
@@ -36,6 +48,20 @@ export default function Settings() {
   const [emailNotifications, setEmailNotifications] = useState(user?.preferences?.email_notifications !== false);
   const [dashboardLayout, setDashboardLayout] = useState(user?.preferences?.dashboard_layout || "default");
   const [dailyBriefTime, setDailyBriefTime] = useState(user?.preferences?.daily_brief_time || "08:00");
+  
+  // New Expanded preferences
+  const [pushNotifications, setPushNotifications] = useState(user?.preferences?.push_notifications !== false);
+  const [morningBrief, setMorningBrief] = useState(user?.preferences?.morning_brief !== false);
+  const [eveningSummary, setEveningSummary] = useState(user?.preferences?.evening_summary !== false);
+  const [smartAlerts, setSmartAlerts] = useState(user?.preferences?.smart_alerts !== false);
+  const [watchlistAlerts, setWatchlistAlerts] = useState(user?.preferences?.watchlist_alerts !== false);
+  const [portfolioAlerts, setPortfolioAlerts] = useState(user?.preferences?.portfolio_alerts !== false);
+  const [weeklyDigest, setWeeklyDigest] = useState(user?.preferences?.weekly_digest !== false);
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(user?.preferences?.quiet_hours_enabled === true);
+  const [quietHoursStart, setQuietHoursStart] = useState(user?.preferences?.quiet_hours_start || "22:00");
+  const [quietHoursEnd, setQuietHoursEnd] = useState(user?.preferences?.quiet_hours_end || "08:00");
+  const [prefTimezone, setPrefTimezone] = useState(user?.preferences?.timezone || "UTC");
+  
   const [prefMessage, setPrefMessage] = useState("");
 
   // Danger Zone
@@ -99,12 +125,76 @@ export default function Settings() {
         notifications_enabled: notificationsEnabled,
         email_notifications: emailNotifications,
         dashboard_layout: dashboardLayout,
-        daily_brief_time: dailyBriefTime
+        daily_brief_time: dailyBriefTime,
+        push_notifications: pushNotifications,
+        morning_brief: morningBrief,
+        evening_summary: eveningSummary,
+        smart_alerts: smartAlerts,
+        watchlist_alerts: watchlistAlerts,
+        portfolio_alerts: portfolioAlerts,
+        weekly_digest: weeklyDigest,
+        quiet_hours_enabled: quietHoursEnabled,
+        quiet_hours_start: quietHoursStart,
+        quiet_hours_end: quietHoursEnd,
+        timezone: prefTimezone
       });
       setPrefMessage("Preferences saved successfully!");
       setTimeout(() => setPrefMessage(""), 3000);
     } catch (err) {
       setPrefMessage("Error saving preferences: " + err.message);
+    }
+  };
+
+  const handlePushToggle = async (checked) => {
+    setPushNotifications(checked);
+    if (checked) {
+      try {
+        if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+          alert("Browser Push Notifications are not supported in this browser.");
+          setPushNotifications(false);
+          return;
+        }
+
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+          alert("Permission for browser notifications was denied.");
+          setPushNotifications(false);
+          return;
+        }
+
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+        
+        if (!subscription) {
+          // Standard public VAPID key
+          const vapidPublicKey = "BDp_k9sL_V8oD4p3o39WGdyb3FY3miM1xjKhA2wGcGFXpZSUrAm"; 
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+          });
+        }
+
+        await api.post("/api/notifications/push-subscribe", subscription);
+        setPrefMessage("Browser push notifications registered successfully!");
+        setTimeout(() => setPrefMessage(""), 3000);
+      } catch (err) {
+        console.error("Failed to register browser push:", err);
+        setPrefMessage("Failed to register push subscription.");
+        setPushNotifications(false);
+      }
+    } else {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+          await subscription.unsubscribe();
+          await api.post("/api/notifications/push-unsubscribe", { endpoint: subscription.endpoint });
+          setPrefMessage("Browser push notifications disabled.");
+          setTimeout(() => setPrefMessage(""), 3000);
+        }
+      } catch (err) {
+        console.error("Failed to unsubscribe:", err);
+      }
     }
   };
 
@@ -220,46 +310,131 @@ export default function Settings() {
 
             {prefMessage && <div className="settings-alert success">{prefMessage}</div>}
 
-            <div className="form-group">
-              <label>Default AI Model</label>
-              <select value={defaultAiModel} onChange={(e) => setDefaultAiModel(e.target.value)}>
-                <option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile (Default)</option>
-                <option value="mixtral-8x7b-32768">Mixtral 8x7B (High-Speed)</option>
-                <option value="deepseek-r1-distill-llama-70b">DeepSeek R1 (Deep Reasoner)</option>
-              </select>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "1.5rem", marginBottom: "2rem" }}>
+              <div>
+                <h4 style={{ margin: "0 0 1rem 0", color: "#00f2fe", fontSize: "14px", textTransform: "uppercase" }}>Core Settings</h4>
+                <div className="form-group">
+                  <label>Default AI Model</label>
+                  <select value={defaultAiModel} onChange={(e) => setDefaultAiModel(e.target.value)}>
+                    <option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile (Default)</option>
+                    <option value="mixtral-8x7b-32768">Mixtral 8x7B (High-Speed)</option>
+                    <option value="deepseek-r1-distill-llama-70b">DeepSeek R1 (Deep Reasoner)</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Theme</label>
+                  <select value={theme} onChange={(e) => setTheme(e.target.value)}>
+                    <option value="dark">Dark Theme (Bloomberg Premium)</option>
+                    <option value="glass">Glassmorphic Glow</option>
+                    <option value="black">Amoled Black</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Daily Brief Time (24h Format)</label>
+                  <input type="time" value={dailyBriefTime} onChange={(e) => setDailyBriefTime(e.target.value)} />
+                </div>
+                
+                <div className="form-group">
+                  <label>Timezone</label>
+                  <select value={prefTimezone} onChange={(e) => setPrefTimezone(e.target.value)}>
+                    <option value="UTC">UTC (Universal Coordinated Time)</option>
+                    <option value="IST">IST (Indian Standard Time)</option>
+                    <option value="EST">EST (Eastern Standard Time)</option>
+                    <option value="PST">PST (Pacific Standard Time)</option>
+                    <option value="GMT">GMT (Greenwich Mean Time)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ margin: "0 0 1rem 0", color: "#00f2fe", fontSize: "14px", textTransform: "uppercase" }}>Notification Channels</h4>
+                <div className="checkbox-setting-row" style={{ marginBottom: "1rem" }}>
+                  <label className="checkbox-container">
+                    <input type="checkbox" checked={notificationsEnabled} onChange={(e) => setNotificationsEnabled(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Master Notifications Enable
+                  </label>
+                </div>
+
+                <div className="checkbox-setting-row" style={{ marginBottom: "1rem" }}>
+                  <label className="checkbox-container">
+                    <input type="checkbox" checked={emailNotifications} onChange={(e) => setEmailNotifications(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Enable Email Alerts
+                  </label>
+                </div>
+
+                <div className="checkbox-setting-row" style={{ marginBottom: "1rem" }}>
+                  <label className="checkbox-container">
+                    <input type="checkbox" checked={pushNotifications} onChange={(e) => handlePushToggle(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Enable Browser Push Notifications
+                  </label>
+                </div>
+
+                <h4 style={{ margin: "1.5rem 0 1rem 0", color: "#00f2fe", fontSize: "14px", textTransform: "uppercase" }}>Alert Subscriptions</h4>
+                <div style={{ display: "grid", gap: "0.75rem" }}>
+                  <label className="checkbox-container" style={{ fontSize: "13px" }}>
+                    <input type="checkbox" checked={morningBrief} onChange={(e) => setMorningBrief(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Daily Morning Brief
+                  </label>
+                  <label className="checkbox-container" style={{ fontSize: "13px" }}>
+                    <input type="checkbox" checked={eveningSummary} onChange={(e) => setEveningSummary(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Evening Market Summary
+                  </label>
+                  <label className="checkbox-container" style={{ fontSize: "13px" }}>
+                    <input type="checkbox" checked={smartAlerts} onChange={(e) => setSmartAlerts(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Smart Alerts Inbound
+                  </label>
+                  <label className="checkbox-container" style={{ fontSize: "13px" }}>
+                    <input type="checkbox" checked={watchlistAlerts} onChange={(e) => setWatchlistAlerts(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Watchlist Updates
+                  </label>
+                  <label className="checkbox-container" style={{ fontSize: "13px" }}>
+                    <input type="checkbox" checked={portfolioAlerts} onChange={(e) => setPortfolioAlerts(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Portfolio Risk Alerts
+                  </label>
+                  <label className="checkbox-container" style={{ fontSize: "13px" }}>
+                    <input type="checkbox" checked={weeklyDigest} onChange={(e) => setWeeklyDigest(e.target.checked)} />
+                    <span className="checkmark"></span>
+                    Weekly Research Digest
+                  </label>
+                </div>
+              </div>
             </div>
 
-            <div className="form-group">
-              <label>Theme</label>
-              <select value={theme} onChange={(e) => setTheme(e.target.value)}>
-                <option value="dark">Dark Theme (Bloomberg Premium)</option>
-                <option value="glass">Glassmorphic Glow</option>
-                <option value="black">Amoled Black</option>
-              </select>
+            <div style={{ borderTop: "1px solid #1f2937", paddingTop: "1.5rem", marginBottom: "1.5rem" }}>
+              <h4 style={{ margin: "0 0 1rem 0", color: "#00f2fe", fontSize: "14px", textTransform: "uppercase" }}>Quiet Hours</h4>
+              <div className="checkbox-setting-row" style={{ marginBottom: "1rem" }}>
+                <label className="checkbox-container">
+                  <input type="checkbox" checked={quietHoursEnabled} onChange={(e) => setQuietHoursEnabled(e.target.checked)} />
+                  <span className="checkmark"></span>
+                  Enable Quiet Hours (Suppresses alerts during these times)
+                </label>
+              </div>
+
+              {quietHoursEnabled && (
+                <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label>Start Time</label>
+                    <input type="time" value={quietHoursStart} onChange={(e) => setQuietHoursStart(e.target.value)} style={{ padding: "8px" }} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label>End Time</label>
+                    <input type="time" value={quietHoursEnd} onChange={(e) => setQuietHoursEnd(e.target.value)} style={{ padding: "8px" }} />
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="form-group">
-              <label>Daily Brief Time (24h Format)</label>
-              <input type="time" value={dailyBriefTime} onChange={(e) => setDailyBriefTime(e.target.value)} />
-            </div>
-
-            <div className="checkbox-setting-row">
-              <label className="checkbox-container">
-                <input type="checkbox" checked={notificationsEnabled} onChange={(e) => setNotificationsEnabled(e.target.checked)} />
-                <span className="checkmark"></span>
-                Enable Real-time Market Alerts
-              </label>
-            </div>
-
-            <div className="checkbox-setting-row" style={{ marginTop: "1rem" }}>
-              <label className="checkbox-container">
-                <input type="checkbox" checked={emailNotifications} onChange={(e) => setEmailNotifications(e.target.checked)} />
-                <span className="checkmark"></span>
-                Enable Daily AI briefings via Email
-              </label>
-            </div>
-
-            <button type="submit" className="btn-primary" style={{ marginTop: "1.5rem" }}>Save Preferences</button>
+            <button type="submit" className="btn-primary" style={{ marginTop: "1rem" }}>Save Preferences</button>
           </form>
         )}
 

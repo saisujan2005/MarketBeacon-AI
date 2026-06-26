@@ -22,7 +22,7 @@ def send_email_alert(post) -> None:
     )
 
 
-def process_post_alerts(db: Session, post) -> Alert:
+def process_post_alerts(db: Session, post, user_id) -> Alert:
     """
     Scans a newly enriched post and generates alerts if:
     importance_score > 80 OR impact_level == 'CRITICAL'.
@@ -32,15 +32,16 @@ def process_post_alerts(db: Session, post) -> Alert:
     level = post.impact_level or "LOW"
 
     if score > 80 or level == "CRITICAL":
-        # Avoid duplicate alerts for the same post title
-        existing = db.query(Alert).filter(Alert.title == post.title).first()
+        # Avoid duplicate alerts for the same post title and user
+        existing = db.query(Alert).filter(Alert.title == post.title, Alert.user_id == user_id).first()
         if existing:
             return existing
 
-        logger.info(f"🚨 Smart Alert Triggered: {post.title} (Score: {score}, Impact: {level})")
+        logger.info(f"🚨 Smart Alert Triggered for user {user_id}: {post.title} (Score: {score}, Impact: {level})")
 
         alert = Alert(
             id=uuid.uuid4(),
+            user_id=user_id,
             title=post.title,
             event_type=post.event_type or "OTHER",
             importance_score=str(score),
@@ -50,7 +51,31 @@ def process_post_alerts(db: Session, post) -> Alert:
         db.add(alert)
         db.commit()
 
-        # Send alert via email channel
+        # Send alert via email and push channels
+        try:
+            from app.models.user import User
+            from app.models.push_subscription import PushSubscription
+            from app.services.notification_service import dispatch_smart_alert, dispatch_push
+            
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                # Dispatch Email
+                dispatch_smart_alert(user, alert)
+                
+                # Dispatch Web Push if preference enabled
+                from app.services.notification_service import should_dispatch_push
+                if should_dispatch_push(user.preferences, "smart_alerts"):
+                    subs = db.query(PushSubscription).filter(PushSubscription.user_id == user_id).all()
+                    for sub in subs:
+                        dispatch_push(
+                            subscription=sub,
+                            title=f"Smart Alert: {alert.title[:45]}...",
+                            body=f"Importance: {alert.importance_score} | Event: {alert.event_type}",
+                            target_url="/alerts"
+                        )
+        except Exception as e:
+            logger.error(f"Failed to dispatch smart alert notifications: {e}")
+
         send_email_alert(post)
         return alert
 

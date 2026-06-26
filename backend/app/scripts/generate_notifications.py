@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
 from app.db.database import SessionLocal
+from app.models.user import User
 from app.models.alert import Alert
 from app.models.post import Post
 from app.models.watchlist import Watchlist
@@ -52,87 +53,116 @@ def find_matching_post(db: Session, alert):
 
 def generate_notifications(db: Session) -> int:
     """
-    For every alert, check if its title matches any watchlist keyword.
+    For every user, find their alerts and check if their titles match the user's watchlist keywords.
     Create a Notification row for each match that doesn't already exist.
     Returns the number of new notifications created.
     """
-    alerts = db.query(Alert).all()
-    watchlists = db.query(Watchlist).all()
-    keywords = [w.keyword for w in watchlists]
-
+    users = db.query(User).all()
     created = 0
 
-    for alert in alerts:
+    for user in users:
+        watchlists = db.query(Watchlist).filter(Watchlist.user_id == user.id).all()
+        keywords = [w.keyword for w in watchlists if w.keyword]
+        if not keywords:
+            continue
 
-        matches = match_watchlist(alert.title, keywords)
+        alerts = db.query(Alert).filter(Alert.user_id == user.id).all()
+        if not alerts:
+            continue
 
-        for keyword in matches:
+        for alert in alerts:
+            matches = match_watchlist(alert.title, keywords)
 
-            existing = (
-                db.query(Notification)
-                .filter(
-                    Notification.keyword == keyword,
-                    Notification.title == alert.title
+            for keyword in matches:
+                existing = (
+                    db.query(Notification)
+                    .filter(
+                        Notification.user_id == user.id,
+                        Notification.keyword == keyword,
+                        Notification.title == alert.title
+                    )
+                    .first()
                 )
-                .first()
-            )
 
-            if existing:
-                continue
+                if existing:
+                    continue
 
-            post, match_method, confidence = find_matching_post(db, alert)
-            
-            def ensure_utc(dt):
-                if dt is None:
-                    return None
-                if dt.tzinfo is None:
-                    return dt.replace(tzinfo=timezone.utc)
-                return dt.astimezone(timezone.utc)
+                post, match_method, confidence = find_matching_post(db, alert)
+                
+                def ensure_utc(dt):
+                    if dt is None:
+                        return None
+                    if dt.tzinfo is None:
+                        return dt.replace(tzinfo=timezone.utc)
+                    return dt.astimezone(timezone.utc)
 
-            posted_at = ensure_utc(post.posted_at) if post else None
-            fetched_at = ensure_utc(post.fetched_at) if post else ensure_utc(alert.created_at)
-            source = post.source_id if post else None
-            sentiment = post.sentiment if post else None
-            event_type = post.event_type if post else alert.event_type
-            post_url = post.post_url if post else (alert.post_url if hasattr(alert, 'post_url') else None)
-            
-            importance_score = None
-            if post and post.importance_score is not None:
-                importance_score = post.importance_score
-            else:
+                posted_at = ensure_utc(post.posted_at) if post else None
+                fetched_at = ensure_utc(post.fetched_at) if post else ensure_utc(alert.created_at)
+                source = post.source_id if post else None
+                sentiment = post.sentiment if post else None
+                event_type = post.event_type if post else alert.event_type
+                post_url = post.post_url if post else (alert.post_url if hasattr(alert, 'post_url') else None)
+                
+                importance_score = None
+                if post and post.importance_score is not None:
+                    importance_score = post.importance_score
+                else:
+                    try:
+                        importance_score = int(alert.importance_score) if alert.importance_score else None
+                    except ValueError:
+                        pass
+
+                if post:
+                    logger.info(f"Matched Alert '{alert.title}' to Post ID {post.id} using {match_method} with {confidence}% confidence.")
+                else:
+                    logger.warning(f"Could not match Alert '{alert.title}' to any Post. Using fallback alert metadata.")
+
+                notification = Notification(
+                    user_id=user.id,
+                    keyword=keyword,
+                    title=alert.title,
+                    posted_at=posted_at,
+                    fetched_at=fetched_at,
+                    source=source,
+                    sentiment=sentiment,
+                    event_type=event_type,
+                    importance_score=importance_score,
+                    post_url=post_url,
+                    meta_info={
+                        "match_method": match_method,
+                        "confidence": confidence,
+                        "source_type": "rss_post" if post else "alert_fallback"
+                    }
+                )
+
+                db.add(notification)
+                created += 1
+
+                # Send watchlist notification via email and push channels
                 try:
-                    importance_score = int(alert.importance_score) if alert.importance_score else None
-                except ValueError:
-                    pass
-
-            if post:
-                logger.info(f"Matched Alert '{alert.title}' to Post ID {post.id} using {match_method} with {confidence}% confidence.")
-            else:
-                logger.warning(f"Could not match Alert '{alert.title}' to any Post. Using fallback alert metadata.")
-
-            notification = Notification(
-                keyword=keyword,
-                title=alert.title,
-                posted_at=posted_at,
-                fetched_at=fetched_at,
-                source=source,
-                sentiment=sentiment,
-                event_type=event_type,
-                importance_score=importance_score,
-                post_url=post_url,
-                meta_info={
-                    "match_method": match_method,
-                    "confidence": confidence,
-                    "source_type": "rss_post" if post else "alert_fallback"
-                }
-            )
-
-            db.add(notification)
-            created += 1
+                    from app.models.push_subscription import PushSubscription
+                    from app.services.notification_service import dispatch_watchlist_alert, dispatch_push, should_dispatch_push
+                    
+                    # Dispatch Email
+                    dispatch_watchlist_alert(user, notification)
+                    
+                    # Dispatch Web Push
+                    if should_dispatch_push(user.preferences, "watchlist_alerts"):
+                        subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
+                        for sub in subs:
+                            dispatch_push(
+                                subscription=sub,
+                                title=f"Watchlist Alert: {notification.keyword}",
+                                body=notification.title[:100],
+                                target_url="/watchlists"
+                            )
+                except Exception as e:
+                    logger.error(f"Failed to dispatch watchlist notifications: {e}")
 
     db.commit()
     logger.info(f"generate_notifications: created {created} new notifications")
     return created
+
 
 
 

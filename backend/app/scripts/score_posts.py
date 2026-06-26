@@ -19,7 +19,7 @@ from app.agents.spacy_entity_extractor import extract_entities_local
 from app.agents.sector_classifier import classify_sector
 from app.agents.importance_scorer import calculate_importance
 from app.agents.prediction_agent import predict_market_impact
-from app.services.timeline_service import add_timeline_event
+from app.services.timeline_service import add_timeline_event, is_valid_entity_name
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ def score_posts(db: Session) -> int:
             names = entities.get(cat_key, [])
             for name in names:
                 name_clean = name.strip()
-                if name_clean:
+                if name_clean and is_valid_entity_name(name_clean):
                     add_timeline_event(
                         db=db,
                         entity_name=name_clean,

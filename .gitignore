@@ -34,3 +34,12 @@ qdrant_data_backup/
 
 # SQLite (dev accounts db)
 *.db
+
+# Uploads
+uploads/
+backend/uploads/
+
+# Build artifacts
+build/
+dist-ssr/
+out/

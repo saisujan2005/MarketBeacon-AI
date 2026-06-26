@@ -109,5 +109,18 @@ class UserPreferences(Base):
     dashboard_layout = Column(String(100), default="default")
     watchlist_default = Column(String(100), default="default")
     daily_brief_time = Column(String(50), default="08:00")
+    
+    # Expanded notification preferences
+    push_notifications = Column(Boolean, default=True)
+    morning_brief = Column(Boolean, default=True)
+    evening_summary = Column(Boolean, default=True)
+    smart_alerts = Column(Boolean, default=True)
+    watchlist_alerts = Column(Boolean, default=True)
+    portfolio_alerts = Column(Boolean, default=True)
+    weekly_digest = Column(Boolean, default=True)
+    quiet_hours_enabled = Column(Boolean, default=False)
+    quiet_hours_start = Column(String(50), default="22:00")
+    quiet_hours_end = Column(String(50), default="08:00")
+    timezone = Column(String(100), default="UTC")
 
     user = relationship("User", back_populates="preferences")

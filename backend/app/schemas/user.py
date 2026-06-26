@@ -16,6 +16,19 @@ class UserPreferencesBase(BaseModel):
     dashboard_layout: Optional[str] = "default"
     watchlist_default: Optional[str] = "default"
     daily_brief_time: Optional[str] = "08:00"
+    
+    # Expanded notification preferences
+    push_notifications: Optional[bool] = True
+    morning_brief: Optional[bool] = True
+    evening_summary: Optional[bool] = True
+    smart_alerts: Optional[bool] = True
+    watchlist_alerts: Optional[bool] = True
+    portfolio_alerts: Optional[bool] = True
+    weekly_digest: Optional[bool] = True
+    quiet_hours_enabled: Optional[bool] = False
+    quiet_hours_start: Optional[str] = "22:00"
+    quiet_hours_end: Optional[str] = "08:00"
+    timezone: Optional[str] = "UTC"
 
 
 class UserPreferencesResponse(UserPreferencesBase):
@@ -76,6 +89,19 @@ class PreferencesUpdate(BaseModel):
     dashboard_layout: Optional[str] = None
     watchlist_default: Optional[str] = None
     daily_brief_time: Optional[str] = None
+    
+    # Expanded notification preferences
+    push_notifications: Optional[bool] = None
+    morning_brief: Optional[bool] = None
+    evening_summary: Optional[bool] = None
+    smart_alerts: Optional[bool] = None
+    watchlist_alerts: Optional[bool] = None
+    portfolio_alerts: Optional[bool] = None
+    weekly_digest: Optional[bool] = None
+    quiet_hours_enabled: Optional[bool] = None
+    quiet_hours_start: Optional[str] = None
+    quiet_hours_end: Optional[str] = None
+    timezone: Optional[str] = None
 
 
 class PasswordUpdate(BaseModel):

@@ -54,6 +54,10 @@ async def lifespan(app: FastAPI):
         # Run Auth and SaaS DB migrations
         from app.scripts.upgrade_auth_db import upgrade_and_backfill_auth
         upgrade_and_backfill_auth()
+
+        # Run Preferences and Push Notification migrations
+        from app.scripts.upgrade_preferences_o import upgrade_schema
+        upgrade_schema()
         
         _migration_log = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "migration_status.log")
         with open(_migration_log, "w") as f:

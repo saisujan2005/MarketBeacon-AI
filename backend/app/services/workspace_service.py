@@ -83,7 +83,7 @@ Your response MUST be ONLY a valid JSON object in this exact schema (no markdown
                 "id": str(p.id),
                 "title": p.title,
                 "sentiment": p.sentiment,
-                "date": p.posted_at.strftime("%Y-%m-%d")
+                "date": p.posted_at.strftime("%Y-%m-%d") if p.posted_at else "Unknown"
             })
 
         alerts = db.query(Alert).filter(
@@ -95,7 +95,7 @@ Your response MUST be ONLY a valid JSON object in this exact schema (no markdown
                 "id": str(a.id),
                 "title": a.title,
                 "importance": a.importance_score,
-                "date": a.created_at.strftime("%Y-%m-%d")
+                "date": a.created_at.strftime("%Y-%m-%d") if a.created_at else "Unknown"
             })
 
     # Hybrid Search on PDFs / Document Library Chunks

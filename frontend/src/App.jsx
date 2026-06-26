@@ -162,7 +162,6 @@ const NAV_ITEMS = [
   { id: "heatmap", label: "Sector Heatmap", icon: "🔥" },
   { id: "timeline", label: "Event Timeline", icon: "⏳" },
   { id: "reports", label: "Research Reports", icon: "🔬" },
-  { id: "briefing", label: "Daily Briefing", icon: "🌅" },
   { id: "alerts", label: "Smart Alerts", icon: "🚨" },
   { id: "notifications", label: "Notifications", icon: "🔔" },
   { id: "ask", label: "Ask AI", icon: "🤖" },
@@ -705,6 +704,9 @@ export default function App() {
   const [briefingHistory, setBriefingHistory] = useState([]);
   const [watchlistNews, setWatchlistNews] = useState([]);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
+  const [entitySearchQuery, setEntitySearchQuery] = useState("");
+  const [timelineSummary, setTimelineSummary] = useState("");
+  const [generatingTimelineSummary, setGeneratingTimelineSummary] = useState(false);
 
   const fetchHeatmap = () => {
     api.get("/sectors/heatmap").then(r => setHeatmapData(r.data)).catch(() => {});
@@ -717,6 +719,19 @@ export default function App() {
         setSelectedTimelineEntity(r.data[0].name);
       }
     }).catch(() => {});
+  };
+
+  const handleGenerateTimelineSummary = async () => {
+    if (!selectedTimelineEntity) return;
+    setGeneratingTimelineSummary(true);
+    try {
+      const res = await api.post(`/api/timeline/${selectedTimelineEntity}/summary`);
+      setTimelineSummary(res.data.summary);
+    } catch (err) {
+      showToast("Failed to generate AI summary");
+    } finally {
+      setGeneratingTimelineSummary(false);
+    }
   };
 
   const fetchReportsList = () => {
@@ -867,6 +882,7 @@ export default function App() {
 
   useEffect(() => {
     if (selectedTimelineEntity) {
+      setTimelineSummary("");
       api.get(`/timeline/${selectedTimelineEntity}`).then(r => setTimelineEvents(r.data)).catch(() => {});
     }
   }, [selectedTimelineEntity]);
@@ -1431,7 +1447,7 @@ export default function App() {
     setGeneratingBriefing(true);
     try {
       const res = await api.post("/daily-briefing/generate");
-      setDailyBriefing(res.data.briefing);
+      setDailyBriefing(res.data);
       fetchDailyBriefing();
     } catch (err) {
       alert("Failed to generate briefing. Market intelligence temporarily unavailable.");
@@ -3025,24 +3041,91 @@ export default function App() {
           {activeSection === "timeline" && (
             <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 24 }}>
               {/* Sidebar Entities */}
-              <div style={s.sidebarPanel}>
+              <div style={{ ...s.sidebarPanel, display: "flex", flexDirection: "column" }}>
                 <h4 style={{ fontSize: 12, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10, paddingLeft: 8 }}>Tracked Entities</h4>
-                {timelineEntities.length === 0 ? <div style={{ fontSize: 12, color: "#475569", padding: 8 }}>No events indexed</div> : timelineEntities.map((ent, i) => (
-                  <button key={i} onClick={() => setSelectedTimelineEntity(ent.name)} style={{
-                    ...s.sidebarItemBtn,
-                    backgroundColor: selectedTimelineEntity === ent.name ? "#06b6d415" : "transparent",
-                    color: selectedTimelineEntity === ent.name ? "#06b6d4" : "#94a3b8",
-                    borderLeft: selectedTimelineEntity === ent.name ? "2px solid #06b6d4" : "2px solid transparent"
-                  }}>
-                    <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: 600 }}>{ent?.name}</span>
-                    <span style={{ fontSize: 9, color: "#475569", background: "#1e293b", padding: "2px 6px", borderRadius: 4 }}>{ent?.type}</span>
-                  </button>
-                ))}
+                <div style={{ padding: "0 8px", marginBottom: 12 }}>
+                  <input
+                    type="text"
+                    placeholder="Search entities..."
+                    value={entitySearchQuery}
+                    onChange={e => setEntitySearchQuery(e.target.value)}
+                    style={{
+                      width: "100%",
+                      background: "#0f172a",
+                      border: "1px solid #1e293b",
+                      borderRadius: "6px",
+                      padding: "8px 12px",
+                      fontSize: "13px",
+                      color: "#f8fafc",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  {timelineEntities.filter(ent => ent.name.toLowerCase().includes(entitySearchQuery.toLowerCase())).length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#475569", padding: 8 }}>No matching entities</div>
+                  ) : (
+                    timelineEntities
+                      .filter(ent => ent.name.toLowerCase().includes(entitySearchQuery.toLowerCase()))
+                      .map((ent, i) => (
+                        <button key={i} onClick={() => setSelectedTimelineEntity(ent.name)} style={{
+                          ...s.sidebarItemBtn,
+                          backgroundColor: selectedTimelineEntity === ent.name ? "#06b6d415" : "transparent",
+                          color: selectedTimelineEntity === ent.name ? "#06b6d4" : "#94a3b8",
+                          borderLeft: selectedTimelineEntity === ent.name ? "2px solid #06b6d4" : "2px solid transparent"
+                        }}>
+                          <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ent?.name}</span>
+                          <span style={{ fontSize: 9, color: "#475569", background: "#1e293b", padding: "2px 6px", borderRadius: 4, marginLeft: 4 }}>{ent?.type}</span>
+                        </button>
+                      ))
+                  )}
+                </div>
               </div>
 
               {/* Timeline Flow */}
               <div>
-                <h3 style={{ fontSize: 16, color: "#cbd5e1", marginBottom: 16 }}>Historical Timeline for: <span style={{ color: "#06b6d4" }}>{selectedTimelineEntity}</span></h3>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+                  <h3 style={{ fontSize: 16, color: "#cbd5e1", margin: 0 }}>Historical Timeline for: <span style={{ color: "#06b6d4" }}>{selectedTimelineEntity}</span></h3>
+                  {selectedTimelineEntity && timelineEvents.length > 0 && (
+                    <button
+                      onClick={handleGenerateTimelineSummary}
+                      disabled={generatingTimelineSummary}
+                      style={{
+                        ...s.btnPrimary,
+                        padding: "6px 14px",
+                        fontSize: "12px",
+                        background: generatingTimelineSummary ? "#0891b250" : "#0891b2",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        border: "none",
+                        cursor: "pointer"
+                      }}
+                    >
+                      <span>✨ {generatingTimelineSummary ? "Summarizing..." : "AI Timeline Summary"}</span>
+                    </button>
+                  )}
+                </div>
+
+                {timelineSummary && (
+                  <div style={{
+                    background: "linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(15, 23, 42, 0.4) 100%)",
+                    border: "1px solid rgba(6, 182, 212, 0.2)",
+                    borderRadius: "10px",
+                    padding: "16px",
+                    marginBottom: "24px",
+                    boxShadow: "0 4px 20px -2px rgba(0,0,0,0.3)"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "13px", fontWeight: "bold", color: "#06b6d4", marginBottom: "8px" }}>
+                      <span>✨</span>
+                      <span>AI EXECUTIVE BRIEFING</span>
+                    </div>
+                    <p style={{ fontSize: "13px", color: "#e2e8f0", lineHeight: "1.6", margin: 0 }}>
+                      {timelineSummary}
+                    </p>
+                  </div>
+                )}
+
                 {timelineEvents.length === 0 ? <EmptyState msg="No timeline events indexed for this entity." /> : (
                   <div style={s.timelineContainer}>
                     {timelineEvents.map((evt, i) => (
@@ -3115,7 +3198,7 @@ export default function App() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #1e293b", paddingBottom: 16, marginBottom: 20 }}>
                       <div>
                         <h2 style={{ fontSize: 22, fontWeight: 800, color: "#f8fafc" }}>Research Report: {selectedReport?.entity_name}</h2>
-                        <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Generated on {new Date(selectedReport?.created_at).toLocaleDateString("en-IN", { dateStyle: "long" })}</div>
+                        <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Generated on {selectedReport?.created_at ? new Date(selectedReport.created_at).toLocaleDateString("en-IN", { dateStyle: "long" }) : "Unknown"}</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
                         <span style={{
@@ -3184,102 +3267,6 @@ export default function App() {
                           <li key={idx} style={{ marginBottom: 8, lineHeight: 1.5 }}>{news}</li>
                         ))}
                       </ul>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* DAILY AI BRIEFING */}
-          {activeSection === "briefing" && (
-            <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 24 }}>
-              {/* Sidebar briefings */}
-              <div style={s.sidebarPanel}>
-                <h4 style={{ fontSize: 12, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12, paddingLeft: 8 }}>Briefing History</h4>
-                {briefingHistory.length === 0 ? <div style={{ fontSize: 12, color: "#475569", padding: 8 }}>No briefings found</div> : briefingHistory.map((brief, i) => (
-                  <button key={i} onClick={() => setDailyBriefing(brief)} style={{
-                    ...s.sidebarItemBtn,
-                    backgroundColor: dailyBriefing && dailyBriefing.id === brief.id ? "#06b6d415" : "transparent",
-                    color: dailyBriefing && dailyBriefing.id === brief.id ? "#06b6d4" : "#94a3b8",
-                  }}>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{new Date(brief.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Briefing Display */}
-              <div>
-                <div style={{ ...s.card, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={s.cardHeader}>Morning AI Market Briefing</div>
-                    <div style={s.cardSub}>Aggregated summary compiled every morning across top economic data and events.</div>
-                  </div>
-                  <button onClick={triggerBriefingRegenerate} disabled={generatingBriefing} style={s.btnPrimary}>
-                    {generatingBriefing ? "Compiling..." : "🔄 Regenerate Briefing"}
-                  </button>
-                </div>
-
-                {generatingBriefing && (
-                  <div style={{ ...s.card, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-                    <div style={s.spinnerBig} />
-                    <span style={{ color: "#94a3b8" }}>Compiling latest intelligence metrics...</span>
-                  </div>
-                )}
-
-                {/* Optional Chaining & Failure Handling fallback (Phase 11) */}
-                {!dailyBriefing && !generatingBriefing && (
-                  <div style={{ ...s.card, color: "#ef4444", border: "1px solid #ef444433", background: "#ef444408", padding: 30, textAlign: "center" }}>
-                    <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
-                    <div style={{ fontSize: 15, fontWeight: "bold" }}>Daily Brief unavailable.</div>
-                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Market intelligence service temporarily unavailable. Please try again later.</div>
-                  </div>
-                )}
-
-                {dailyBriefing && !generatingBriefing && (
-                  <div style={s.card}>
-                    <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid #1e293b", paddingBottom: 14, marginBottom: 16 }}>
-                      <span style={{ fontSize: 14, color: "#94a3b8", fontWeight: "bold" }}>PUBLISHED: {new Date(dailyBriefing?.created_at).toLocaleDateString("en-IN", { dateStyle: "long", timeStyle: "short" })}</span>
-                      <span style={{
-                        fontSize: 12,
-                        fontWeight: "bold",
-                        color: (dailyBriefing?.outlook || "").includes("Bullish") ? "#10b981" : (dailyBriefing?.outlook || "").includes("Bearish") ? "#ef4444" : "#94a3b8"
-                      }}>
-                        OUTLOOK: {dailyBriefing?.outlook || "Neutral"}
-                      </span>
-                    </div>
-
-                    <div style={{ marginBottom: 20 }}>
-                      <h4 style={{ color: "#06b6d4", fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Market Narrative</h4>
-                      <p style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6, margin: 0 }}>{dailyBriefing?.market_summary}</p>
-                    </div>
-
-                    <div style={{ marginBottom: 20 }}>
-                      <h4 style={{ color: "#ef4444", fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Today's Top Catalyst Events</h4>
-                      <ol style={{ margin: 0, paddingLeft: 16, fontSize: 13, color: "#cbd5e1" }}>
-                        {(dailyBriefing?.top_events || []).map((e, idx) => (
-                          <li key={idx} style={{ marginBottom: 6, lineHeight: 1.5 }}>{e}</li>
-                        ))}
-                      </ol>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                      <div style={{ border: "1px solid #10b98133", background: "#10b98108", borderRadius: 8, padding: 12 }}>
-                        <div style={{ fontSize: 12, color: "#10b981", fontWeight: "bold", marginBottom: 6 }}>Bullish Catalyst Sectors</div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {(dailyBriefing?.bullish_sectors || []).map((sect, idx) => (
-                            <span key={idx} style={{ fontSize: 11, background: "#10b98118", color: "#10b981", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>{sect}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ border: "1px solid #ef444433", background: "#ef444408", borderRadius: 8, padding: 12 }}>
-                        <div style={{ fontSize: 12, color: "#ef4444", fontWeight: "bold", marginBottom: 6 }}>Bearish/Risk Sectors</div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {(dailyBriefing?.bearish_sectors || []).map((sect, idx) => (
-                            <span key={idx} style={{ fontSize: 11, background: "#ef444418", color: "#ef4444", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>{sect}</span>
-                          ))}
-                        </div>
-                      </div>
                     </div>
                   </div>
                 )}

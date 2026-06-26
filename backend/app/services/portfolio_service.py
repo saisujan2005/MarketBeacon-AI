@@ -406,7 +406,7 @@ def compile_holding_timeline(db: Session, user_id, company_name: str) -> list:
     ).order_by(Post.posted_at.desc()).limit(5).all()
     for p in posts:
         timeline.append({
-            "date": p.posted_at.strftime("%Y-%m-%d %H:%M"),
+            "date": p.posted_at.strftime("%Y-%m-%d %H:%M") if p.posted_at else "Unknown",
             "timestamp": p.posted_at,
             "type": "News",
             "title": p.title,
@@ -421,7 +421,7 @@ def compile_holding_timeline(db: Session, user_id, company_name: str) -> list:
     ).order_by(Alert.created_at.desc()).limit(5).all()
     for a in alerts:
         timeline.append({
-            "date": a.created_at.strftime("%Y-%m-%d %H:%M"),
+            "date": a.created_at.strftime("%Y-%m-%d %H:%M") if a.created_at else "Unknown",
             "timestamp": a.created_at,
             "type": "Alert",
             "title": a.title,
@@ -433,13 +433,13 @@ def compile_holding_timeline(db: Session, user_id, company_name: str) -> list:
     reports = db.query(ResearchDocument).filter(
         ResearchDocument.user_id == user_id,
         ResearchDocument.company_name.ilike(co_normalized)
-    ).order_by(ResearchDocument.uploaded_at.desc()).limit(5).all()
+    ).order_by(ResearchDocument.upload_date.desc()).limit(5).all()
     for r in reports:
         timeline.append({
-            "date": r.uploaded_at.strftime("%Y-%m-%d %H:%M"),
-            "timestamp": r.uploaded_at,
+            "date": r.upload_date.strftime("%Y-%m-%d %H:%M") if r.upload_date else "Unknown",
+            "timestamp": r.upload_date,
             "type": "Research",
-            "title": f"Report Indexed: {r.file_name}",
+            "title": f"Report Indexed: {r.title}",
             "badge": "DOC INDEXED",
             "color": "#a855f7"
         })

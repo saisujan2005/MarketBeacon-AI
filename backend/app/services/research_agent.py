@@ -103,6 +103,7 @@ You must output ONLY a valid JSON object in this format (no other text, no markd
         return data
     except Exception as e:
         logger.error(f"[Peer Discovery] Failed dynamic peer discovery for {company_name}: {e}")
+        db.rollback()
         # Standard fallback peers mapping
         fallbacks = {
             "tcs": {"sector": "Technology", "industry": "IT Services", "market_cap_range": "Mega-Cap", "peers": ["Infosys", "Wipro", "HCL Tech", "Cognizant"]},
@@ -341,6 +342,7 @@ Return ONLY a valid JSON object in this exact format:
         }
     except Exception as e:
         logger.error(f"[Research Orchestrator] Generation failed for {company_name}: {e}")
+        db.rollback()
         
         # Load real target company fundamentals for fallback
         tf = target_fundamentals
