@@ -109,4 +109,4 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-}) // Trigger 54
+}) // Trigger 56
