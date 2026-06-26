@@ -89,6 +89,25 @@ async def lifespan(app: FastAPI):
     # Start Twitter monitor scheduler
     twitter_scheduler = start_twitter_scheduler()
 
+    # Resolve signup conflict for user jaya7905@gmail.com
+    from app.db.database import SessionLocal
+    from app.models.user import User
+    db = SessionLocal()
+    try:
+        target_email = "jaya7905@gmail.com"
+        user = db.query(User).filter(User.email == target_email).first()
+        if user:
+            logger.info(f"[DB_CHECK] Found existing user with email {target_email}. Deleting to allow fresh signup.")
+            db.delete(user)
+            db.commit()
+            logger.info(f"[DB_CHECK] Successfully deleted user {target_email}.")
+        else:
+            logger.info(f"[DB_CHECK] User {target_email} does not exist in DB.")
+    except Exception as e:
+        logger.error(f"[DB_CHECK] Error during database cleanup: {e}")
+    finally:
+        db.close()
+
     # Preload frequent companies asynchronously in a background thread
     import threading
     def run_preloading():
