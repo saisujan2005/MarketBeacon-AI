@@ -129,6 +129,7 @@ ALERT_THRESHOLD=85
 # ── App ───────────────────────────────────────────────────────────────────────
 APP_ENV=development
 FRONTEND_URL=http://localhost:5173
+DISABLE_LOCAL_ML=False # Set to True on Render (512MB RAM) to bypass local ML models
 ```
 
 > **Security Note**: The JWT secret is auto-generated in `auth_service.py`. For production, set `JWT_SECRET` as an environment variable with a cryptographically random 64+ character string.

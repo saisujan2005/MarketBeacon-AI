@@ -1,6 +1,8 @@
-import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+DISABLE_LOCAL_ML = os.getenv("DISABLE_LOCAL_ML", "False").lower() in ("true", "1", "yes")
 
 # Lazy-loaded spaCy model singleton
 _nlp = None
@@ -9,6 +11,8 @@ _nlp = None
 def get_spacy_model():
     """Lazy-loads the spaCy NLP model, trying en_core_web_lg first, then en_core_web_sm."""
     global _nlp
+    if DISABLE_LOCAL_ML:
+        return None
     if _nlp is None:
         try:
             import spacy

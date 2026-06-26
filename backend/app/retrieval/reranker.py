@@ -1,12 +1,16 @@
-import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+DISABLE_LOCAL_ML = os.getenv("DISABLE_LOCAL_ML", "False").lower() in ("true", "1", "yes")
 
 _model = None
 
 def get_model():
     """Lazy-loads the CrossEncoder reranker model."""
     global _model
+    if DISABLE_LOCAL_ML:
+        return None
     if _model is None:
         try:
             logger.info("Lazy-loading CrossEncoder model cross-encoder/ms-marco-MiniLM-L-6-v2...")

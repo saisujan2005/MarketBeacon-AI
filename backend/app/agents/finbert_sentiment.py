@@ -1,6 +1,8 @@
-import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+DISABLE_LOCAL_ML = os.getenv("DISABLE_LOCAL_ML", "False").lower() in ("true", "1", "yes")
 
 # Lazy-loaded pipeline singleton
 _sentiment_pipeline = None
@@ -9,6 +11,8 @@ _sentiment_pipeline = None
 def get_sentiment_pipeline():
     """Lazy-loads the transformers pipeline and ProsusAI/finbert model once."""
     global _sentiment_pipeline
+    if DISABLE_LOCAL_ML:
+        return None
     if _sentiment_pipeline is None:
         try:
             from transformers import pipeline
