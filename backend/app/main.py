@@ -151,9 +151,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+frontend_url = os.getenv("FRONTEND_URL")
+origins = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
+if frontend_url:
+    for url in frontend_url.split(","):
+        url = url.strip()
+        if url and url not in origins:
+            origins.append(url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
