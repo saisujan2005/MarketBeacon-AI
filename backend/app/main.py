@@ -107,7 +107,10 @@ async def lifespan(app: FastAPI):
     # Log all registered FastAPI routes during startup
     logger.info("Registered FastAPI Routes:")
     for route in app.routes:
-        logger.info(f"  {route.path}")
+        if hasattr(route, "path"):
+            logger.info(f"  {route.path}")
+        else:
+            logger.info(f"  {route}")
 
     yield
 
