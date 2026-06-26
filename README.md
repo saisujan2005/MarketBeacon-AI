@@ -191,6 +191,18 @@ cd frontend
 npm install
 ```
 
+Create a `.env` file inside the `frontend/` directory to configure the backend API URL. Refer to `frontend/.env.example` as a template.
+
+#### Deployment Configuration
+* **Local development**:
+  ```env
+  VITE_API_URL=http://127.0.0.1:8000
+  ```
+* **Production**:
+  ```env
+  VITE_API_URL=https://<backend-url>
+  ```
+
 ---
 
 ## Running the Application

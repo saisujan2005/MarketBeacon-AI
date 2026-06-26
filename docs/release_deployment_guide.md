@@ -181,6 +181,7 @@ Validate that the production `.env` configuration contains the following keys, r
 | `VAPID_PUBLIC_KEY` | Generate a distinct production public key using web-push. | Push notifications browser configuration. |
 | `VAPID_PRIVATE_KEY` | Generate a distinct production private key. | Private key to sign Web Push payloads. |
 | `VAPID_CLAIMS_EMAIL` | Domain support address (e.g. `admin@marketbeacon.ai`). | Identifies push notification sender. |
+| `VITE_API_URL` | Set to the backend API base URL (e.g. `https://api.marketbeacon.ai`). | Frontend build environment configuration variable. |
 
 > [!IMPORTANT]
 > **CORS Security Verification**:
