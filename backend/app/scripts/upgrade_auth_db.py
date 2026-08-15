@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from sqlalchemy import text, inspect
 from app.db.database import engine, SessionLocal
@@ -23,6 +24,46 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _bootstrap_admin_if_requested(db):
+    """
+    Optionally create an initial administrator account.
+
+    Only runs when BOTH BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are
+    present in the environment, and only when that account does not already
+    exist. Nothing is created implicitly, and no password literal exists in the
+    source tree. The password is never logged.
+    """
+    email = (os.getenv("BOOTSTRAP_ADMIN_EMAIL") or "").strip().lower()
+    password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD") or ""
+
+    if not email or not password:
+        return None
+
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        logger.info("Bootstrap admin already exists; leaving it unchanged.")
+        return existing
+
+    if len(password) < 12:
+        logger.error("BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters. Skipping bootstrap.")
+        return None
+
+    admin = User(
+        id=uuid.uuid4(),
+        full_name=os.getenv("BOOTSTRAP_ADMIN_NAME") or "Administrator",
+        email=email,
+        password_hash=hash_password(password),
+        role="admin",
+        is_verified=True,
+    )
+    db.add(admin)
+    db.flush()
+    db.add(UserPreferences(user_id=admin.id))
+    db.commit()
+    logger.info("Bootstrap administrator account created.")
+    return admin
+
+
 def upgrade_and_backfill_auth():
     logger.info("Starting SaaS Auth database migration...")
     
@@ -32,43 +73,29 @@ def upgrade_and_backfill_auth():
     
     db = SessionLocal()
     try:
-        # 2. Check if a default user exists, otherwise create it
-        default_email = "sujan@marketbeacon.ai"
-        default_user = db.query(User).filter(User.email == default_email).first()
-        
+        # 2. Determine an owner account used to backfill legacy rows.
+        #
+        # This previously created a hardcoded admin account
+        # (sujan@marketbeacon.ai / a literal password committed to the repo) on
+        # every startup, which is a permanent backdoor on any deployment.
+        #
+        # Now: an admin is only bootstrapped when BOTH BOOTSTRAP_ADMIN_EMAIL and
+        # BOOTSTRAP_ADMIN_PASSWORD are supplied via the environment. Otherwise we
+        # reuse the oldest existing account purely as the backfill owner.
+        default_user = _bootstrap_admin_if_requested(db)
+
         if not default_user:
-            logger.info("Creating default system user (Sujan) for database backfilling...")
-            # Default password: Sujan@2005 (matches env settings)
-            pwd_hash = hash_password("Sujan@2005")
-            default_user = User(
-                id=uuid.uuid4(),
-                full_name="Sujan",
-                email=default_email,
-                password_hash=pwd_hash,
-                role="admin",
-                is_verified=True,
-                preferred_market="US",
-                subscription_plan="pro"
-            )
-            db.add(default_user)
-            db.flush()
-            
-            # Create user preferences
-            prefs = UserPreferences(
-                user_id=default_user.id,
-                theme="dark",
-                language="en",
-                default_ai_model="llama-3.3-70b-versatile",
-                market_region="US"
-            )
-            db.add(prefs)
-            db.commit()
-            logger.info(f"Default user created with ID: {default_user.id}")
+            default_user = db.query(User).order_by(User.created_at.asc()).first()
+
+        default_user_id = str(default_user.id) if default_user else None
+        if default_user_id:
+            logger.info("Using existing account as backfill owner for legacy rows.")
         else:
-            logger.info(f"Default user (Sujan) already exists with ID: {default_user.id}")
-            
-        default_user_id = str(default_user.id)
-        
+            logger.warning(
+                "No user accounts exist yet; legacy rows will not be backfilled and "
+                "user_id columns will remain nullable until an account is created."
+            )
+
         # 3. Add user_id column to existing tables defensively
         tables_to_add_user_id = [
             "chat_sessions",
@@ -92,19 +119,33 @@ def upgrade_and_backfill_auth():
                     with conn.begin():
                         # Add column as nullable first
                         conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS user_id UUID;"))
-                        
-                        # Set default user_id for existing rows
-                        conn.execute(text(f"UPDATE {table_name} SET user_id = '{default_user_id}' WHERE user_id IS NULL;"))
-                        
+
+                        # Backfill existing rows only when an owner account exists.
+                        if default_user_id:
+                            conn.execute(
+                                text(f"UPDATE {table_name} SET user_id = :uid WHERE user_id IS NULL;"),
+                                {"uid": default_user_id},
+                            )
+
                         # Add foreign key constraint
                         constraint_name = f"fk_{table_name}_user_id"
                         conn.execute(text(
                             f"ALTER TABLE {table_name} ADD CONSTRAINT {constraint_name} "
                             f"FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;"
                         ))
-                        
-                        # Make user_id NOT NULL
-                        conn.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN user_id SET NOT NULL;"))
+
+                        # Only enforce NOT NULL when every row actually has an owner,
+                        # otherwise the migration would fail and abort startup.
+                        remaining = conn.execute(
+                            text(f"SELECT COUNT(*) FROM {table_name} WHERE user_id IS NULL;")
+                        ).scalar()
+                        if remaining == 0:
+                            conn.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN user_id SET NOT NULL;"))
+                        else:
+                            logger.warning(
+                                "%s still has %s rows without user_id; leaving column nullable.",
+                                table_name, remaining,
+                            )
                 logger.info(f"Successfully migrated table: {table_name}")
             else:
                 logger.info(f"Column user_id already exists in table: {table_name}")

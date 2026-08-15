@@ -103,14 +103,10 @@ def generate_notifications(db: Session) -> int:
                 event_type = post.event_type if post else alert.event_type
                 post_url = post.post_url if post else (alert.post_url if hasattr(alert, 'post_url') else None)
                 
-                importance_score = None
                 if post and post.importance_score is not None:
                     importance_score = post.importance_score
                 else:
-                    try:
-                        importance_score = int(alert.importance_score) if alert.importance_score else None
-                    except ValueError:
-                        pass
+                    importance_score = alert.importance_score
 
                 if post:
                     logger.info(f"Matched Alert '{alert.title}' to Post ID {post.id} using {match_method} with {confidence}% confidence.")

@@ -1,27 +1,29 @@
-from fastapi import APIRouter
-from collections import Counter
+from fastapi import APIRouter, Depends
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-from app.db.database import SessionLocal
+from app.db.database import get_db
+from app.db.dependencies import get_current_user
 from app.models.post import Post
+from app.models.user import User
 
 router = APIRouter()
 
+
 @router.get("/trends")
-def get_trends():
+def get_trends(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns a count of posts per event type.
 
-    db = SessionLocal()
+    Aggregation is performed in SQL rather than loading every post into memory.
+    """
+    rows = (
+        db.query(Post.event_type, func.count(Post.id))
+        .group_by(Post.event_type)
+        .all()
+    )
 
-    try:
-        posts = db.query(Post).all()
-
-        counts = Counter(
-            [
-                post.event_type
-                for post in posts
-            ]
-        )
-
-        return dict(counts)
-
-    finally:
-        db.close()
+    return {event_type: count for event_type, count in rows}

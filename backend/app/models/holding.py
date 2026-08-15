@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Integer, Float, JSON
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Integer, Float, JSON, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -19,7 +19,8 @@ class Holding(Base):
     user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
     company_name = Column(
@@ -77,3 +78,8 @@ class Holding(Base):
     )
 
     user = relationship("User", backref="holdings")
+
+    __table_args__ = (
+        # Portfolio queries load all of one user's holdings, often by company.
+        Index("ix_holdings_user_company", "user_id", "company_name"),
+    )

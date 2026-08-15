@@ -1,9 +1,12 @@
 import uuid
 import os
+import re
 import logging
+from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
+from app.core.config import settings
 from app.db.database import get_db
 from app.db.dependencies import get_current_user
 from app.models.user import User
@@ -27,6 +30,21 @@ from app.services.financial_data import normalize_company_name
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Copilot"])
+
+ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".txt"}
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _safe_filename(filename: str) -> str:
+    """
+    Reduces a client-supplied filename to a safe basename.
+
+    Strips any directory components and replaces anything outside a conservative
+    character set, so the value can never escape the configured upload directory.
+    """
+    base = os.path.basename(filename or "").strip()
+    base = _SAFE_FILENAME_RE.sub("_", base)
+    return base[:120] or "upload"
 
 
 @router.post("/chat/session")
@@ -244,13 +262,26 @@ def upload_research_document(
     Ingests PDF, DOCX, or TXT documents, chunks them, computes embeddings,
     indexes them in Qdrant, and saves metadata in PostgreSQL under the authenticated user.
     """
-    filename = file.filename
+    filename = _safe_filename(file.filename)
     ext = os.path.splitext(filename)[1].lower()
 
-    if ext not in [".pdf", ".docx", ".txt"]:
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported file extension {ext}. Supported types: PDF, DOCX, TXT."
+        )
+
+    # Read once and enforce the configured size limit before creating any state.
+    file_bytes = file.file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(file_bytes) > settings.max_upload_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"File exceeds the maximum upload size of "
+                f"{settings.MAX_UPLOAD_MB} MB."
+            ),
         )
 
     doc = ResearchDocument(
@@ -267,15 +298,22 @@ def upload_research_document(
     logger.info(f"[Ingestion] Document metadata entry created: ID {doc.id} (User: {current_user.id})")
 
     try:
-        uploads_dir = os.path.abspath("d:/MarketBeacon-AI/backend/uploads")
-        os.makedirs(uploads_dir, exist_ok=True)
-        file_path = os.path.join(uploads_dir, f"{doc.id}_{filename}")
+        # Configurable upload root (UPLOAD_DIR), defaulting to backend/uploads.
+        # Previously this was the hardcoded Windows path
+        # "d:/MarketBeacon-AI/backend/uploads", which resolved to a bogus
+        # relative directory on Linux/Render and silently wrote files there.
+        uploads_dir = Path(settings.UPLOAD_DIR)
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        file_path = uploads_dir / f"{doc.id}_{filename}"
 
-        file_bytes = file.file.read()
-        with open(file_path, "wb") as f:
-            f.write(file_bytes)
+        # Defence in depth: never write outside the configured directory.
+        resolved = file_path.resolve()
+        if not str(resolved).startswith(str(uploads_dir.resolve())):
+            raise ValueError("Resolved upload path escapes the upload directory.")
 
-        doc.file_path = file_path
+        resolved.write_bytes(file_bytes)
+
+        doc.file_path = str(resolved)
         db.commit()
 
         if ext == ".pdf":

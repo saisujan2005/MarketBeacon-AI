@@ -4,7 +4,9 @@ import json
 import base64
 import hmac
 import hashlib
-from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Try to import bcrypt and jose for robust JWT and Hashing.
 # If they fail, we implement a production-grade HMAC-SHA256 JWT and PBKDF2 password hashing fallback.
@@ -20,10 +22,15 @@ try:
 except ImportError:
     HAS_JOSE = False
 
-JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-marketbeacon-ai-2026-saas-platform")
-JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+from app.core.config import settings
+
+# Sourced from validated configuration. There is deliberately no fallback
+# literal here: a committed default signing key allows anyone with repository
+# access to forge tokens for any account.
+JWT_SECRET = settings.JWT_SECRET
+JWT_ALGORITHM = settings.JWT_ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 
 def hash_password(password: str) -> str:
@@ -119,22 +126,20 @@ def verify_token(token: str) -> dict:
     """
     if not token:
         return None
-        
-    import logging
-    logger = logging.getLogger("auth_debug")
-        
+
     if HAS_JOSE:
         try:
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             # Check exp manually in case jose does not do it strictly
             exp = payload.get("exp")
             if exp and time.time() > exp:
-                logger.info(f"[DEBUG AUTH] Token expired! Current time: {int(time.time())}, Exp: {exp}")
+                logger.debug("Token rejected: expired.")
                 return None
             return payload
-        except JWTError as e:
-            logger.info(f"[DEBUG AUTH] jose decode failed: {str(e)}")
-            # Try fallback in case it was encoded using fallback
+        except JWTError:
+            # Do not log the token or the raw error at INFO: it is attacker-controlled
+            # input and appears on every unauthenticated probe.
+            logger.debug("Token rejected by primary decoder; trying fallback decoder.")
             return _fallback_jwt_decode(token)
     else:
         return _fallback_jwt_decode(token)

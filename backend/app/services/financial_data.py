@@ -4,6 +4,26 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SIMULATED DATA NOTICE
+#
+# LocalFinancialDataProvider returns ILLUSTRATIVE, NON-LIVE figures. They are not
+# sourced from company filings, exchanges, or any market data vendor, and they do
+# not update.
+#
+# These values previously carried fabricated attributions such as
+# "NVIDIA FY26 Form 10-K" with specific filing dates, which presented invented
+# numbers as if they came from real regulatory documents. Those attributions have
+# been removed.
+#
+# Every payload now carries `is_simulated: True` and `data_source`, and the
+# frontend renders a "SIMULATED" badge wherever these values are displayed.
+# Replacing this with a live provider is tracked separately (P1).
+# ─────────────────────────────────────────────────────────────────────────────
+
+SIMULATED_SOURCE_LABEL = "Simulated sample data - not from company filings"
+SIMULATED_PROVIDER_NAME = "LocalFinancialDataProvider (simulated)"
+
 # Standard company alias map for normalization
 COMPANIES_MAP = {
     "hdfc bank": "HDFC Bank",
@@ -76,12 +96,15 @@ class FinancialDataProvider(ABC):
 
 class LocalFinancialDataProvider(FinancialDataProvider):
     """
-    Default offline data provider loaded with verified fundamentals for
-    the benchmark companies and their primary peers.
+    Offline placeholder provider.
+
+    WARNING: these figures are SIMULATED sample values used so the UI has
+    something to render. They are illustrative only, are not live, and are not
+    taken from company filings or any market data source. Do not rely on them.
     """
-    
+
     def __init__(self):
-        # Database of verified fundamentals
+        # Simulated sample fundamentals (NOT sourced from filings).
         self._db = {
             "TCS": {
                 "company_name": "TCS",
@@ -95,9 +118,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "10.2x",
                 "revenue_growth": "12.5% YoY",
                 "profit_growth": "10.2% YoY",
-                "source_document": "TCS Annual Report FY25",
-                "source_date": "2025-06-15",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "Infosys": {
                 "company_name": "Infosys",
@@ -111,9 +134,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "7.8x",
                 "revenue_growth": "9.8% YoY",
                 "profit_growth": "8.5% YoY",
-                "source_document": "Infosys Annual Report FY25",
-                "source_date": "2025-06-20",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "HDFC Bank": {
                 "company_name": "HDFC Bank",
@@ -127,9 +150,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "2.5x",
                 "revenue_growth": "16.8% YoY",
                 "profit_growth": "18.5% YoY",
-                "source_document": "HDFC Bank Q4 FY26 Results",
-                "source_date": "2026-04-18",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "Reliance Industries": {
                 "company_name": "Reliance Industries",
@@ -143,9 +166,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "2.3x",
                 "revenue_growth": "11.2% YoY",
                 "profit_growth": "8.2% YoY",
-                "source_document": "Reliance Industries Annual Report FY25",
-                "source_date": "2025-07-28",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "Nvidia": {
                 "company_name": "Nvidia",
@@ -159,9 +182,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "42.8x",
                 "revenue_growth": "262% YoY",
                 "profit_growth": "282% YoY",
-                "source_document": "NVIDIA FY26 Form 10-K",
-                "source_date": "2026-02-28",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "Tesla": {
                 "company_name": "Tesla",
@@ -175,9 +198,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "12.2x",
                 "revenue_growth": "18.8% YoY",
                 "profit_growth": "14.5% YoY",
-                "source_document": "Tesla Form 10-K 2025",
-                "source_date": "2026-01-30",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "Wipro": {
                 "company_name": "Wipro",
@@ -191,9 +214,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "3.2x",
                 "revenue_growth": "4.2% YoY",
                 "profit_growth": "3.5% YoY",
-                "source_document": "Wipro Annual Report FY25",
-                "source_date": "2025-06-18",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "ICICI Bank": {
                 "company_name": "ICICI Bank",
@@ -207,9 +230,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "3.1x",
                 "revenue_growth": "14.2% YoY",
                 "profit_growth": "16.8% YoY",
-                "source_document": "ICICI Bank Q4 FY26 Results",
-                "source_date": "2026-04-20",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "Axis Bank": {
                 "company_name": "Axis Bank",
@@ -223,9 +246,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "2.2x",
                 "revenue_growth": "12.8% YoY",
                 "profit_growth": "14.2% YoY",
-                "source_document": "Axis Bank Q4 FY26 Results",
-                "source_date": "2026-04-22",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "SBI": {
                 "company_name": "SBI",
@@ -239,9 +262,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "1.5x",
                 "revenue_growth": "10.5% YoY",
                 "profit_growth": "12.2% YoY",
-                "source_document": "SBI Q4 FY26 Results",
-                "source_date": "2026-05-10",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "AMD": {
                 "company_name": "AMD",
@@ -255,9 +278,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "4.5x",
                 "revenue_growth": "12.2% YoY",
                 "profit_growth": "-15% YoY",
-                "source_document": "AMD Form 10-K 2025",
-                "source_date": "2026-02-05",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "Intel": {
                 "company_name": "Intel",
@@ -271,9 +294,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "1.4x",
                 "revenue_growth": "-14% YoY",
                 "profit_growth": "-78% YoY",
-                "source_document": "Intel Form 10-K 2025",
-                "source_date": "2026-01-25",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "TSMC": {
                 "company_name": "TSMC",
@@ -287,9 +310,9 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "6.8x",
                 "revenue_growth": "18.5% YoY",
                 "profit_growth": "16.2% YoY",
-                "source_document": "TSMC Annual Report 2025",
-                "source_date": "2026-03-12",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             },
             "BYD": {
                 "company_name": "BYD",
@@ -303,20 +326,25 @@ class LocalFinancialDataProvider(FinancialDataProvider):
                 "pb_ratio": "4.8x",
                 "revenue_growth": "38.5% YoY",
                 "profit_growth": "32.2% YoY",
-                "source_document": "BYD Company Annual Report FY25",
-                "source_date": "2026-03-28",
-                "freshness_date": "2026-06-24"
+                "source_document": SIMULATED_SOURCE_LABEL,
+                "source_date": None,
+                "freshness_date": None
             }
         }
         
     def get_company_fundamentals(self, company_name: str) -> dict:
         normalized = normalize_company_name(company_name)
         if normalized in self._db:
-            logger.info(f"[LocalFinancialDataProvider] Found fundamentals for: {normalized}")
-            return self._db[normalized]
-            
-        logger.warning(f"[LocalFinancialDataProvider] No fundamentals found for: {normalized}")
-        # Standard fallback returning structured empty keys to prevent crashes
+            logger.info(f"[LocalFinancialDataProvider] Returning SIMULATED fundamentals for: {normalized}")
+            # Copy so callers cannot mutate the shared table, and tag the payload
+            # so every consumer (and the UI) can see this is not real data.
+            data = dict(self._db[normalized])
+            data["is_simulated"] = True
+            data["data_source"] = SIMULATED_PROVIDER_NAME
+            return data
+
+        logger.warning(f"[LocalFinancialDataProvider] No fundamentals available for: {normalized}")
+        # Structured empty payload. No invented numbers, no invented sources.
         return {
             "company_name": normalized,
             "revenue": "N/A",
@@ -329,9 +357,11 @@ class LocalFinancialDataProvider(FinancialDataProvider):
             "pb_ratio": "N/A",
             "revenue_growth": "N/A",
             "profit_growth": "N/A",
-            "source_document": "N/A",
-            "source_date": "N/A",
-            "freshness_date": datetime.utcnow().strftime("%Y-%m-%d")
+            "source_document": "Not available",
+            "source_date": None,
+            "freshness_date": None,
+            "is_simulated": True,
+            "data_source": SIMULATED_PROVIDER_NAME,
         }
 
 

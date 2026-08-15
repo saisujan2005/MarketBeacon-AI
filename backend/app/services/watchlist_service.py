@@ -15,6 +15,39 @@ from app.services.financial_data import normalize_company_name
 
 logger = logging.getLogger(__name__)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# AI-ESTIMATED MARKET INTELLIGENCE
+#
+# get_upcoming_events_cached(), get_opportunities_risks_cached() and
+# get_sectors_intelligence_cached() ask the LLM to produce calendars, event
+# times, confidence percentages and news counts WITHOUT any grounding data.
+# Their outputs are model estimates, not verified market facts, and the
+# hardcoded except-branch fallbacks are illustrative examples only.
+#
+# Each of these now tags its payload with `_meta.ai_estimated = True` so the
+# frontend can label them in the UI. Grounding these surfaces in real data
+# (an economic calendar + the posts table) is tracked separately (P1/H8).
+# ─────────────────────────────────────────────────────────────────────────────
+
+AI_ESTIMATE_NOTICE = (
+    "AI-estimated. Not verified market data - may be inaccurate or out of date."
+)
+
+
+def _tag_ai_estimated(payload, is_fallback: bool = False):
+    """Marks an LLM-produced payload as an estimate for the UI to label."""
+    meta = {
+        "ai_estimated": True,
+        "is_example_fallback": is_fallback,
+        "notice": AI_ESTIMATE_NOTICE,
+    }
+    if isinstance(payload, dict):
+        payload["_meta"] = meta
+    elif isinstance(payload, list):
+        return {"items": payload, "_meta": meta}
+    return payload
+
+
 # In-memory cache for market intelligence
 _MEM_CACHE = {}
 
@@ -76,13 +109,10 @@ def calculate_market_health_cached(db: Session) -> dict:
     alert_sum = 0
     critical_alerts = 0
     for a in recent_alerts:
-        try:
-            val = int(a.importance_score)
-            alert_sum += val
-            if val >= 90:
-                critical_alerts += 1
-        except Exception:
-            alert_sum += 70
+        val = a.importance_score if a.importance_score is not None else 70
+        alert_sum += val
+        if val >= 90:
+            critical_alerts += 1
             
     avg_alert_imp = alert_sum / len(recent_alerts) if recent_alerts else 75
     
@@ -128,6 +158,7 @@ You must return ONLY a valid JSON object in this exact format (no other text, no
         response = ask_llm(prompt, article_title="Market Health Assessment")
         cleaned = clean_json_output(response)
         data = json.loads(cleaned)
+        _tag_ai_estimated(data)
         set_cached_data("market_health", data, 900)
         return data
     except Exception as e:
@@ -142,6 +173,7 @@ You must return ONLY a valid JSON object in this exact format (no other text, no
             "highest_impact_event": "RBI Governor Speech",
             "next_event": "US CPI release in 5 hours"
         }
+        _tag_ai_estimated(fallback, is_fallback=True)
         set_cached_data("market_health", fallback, 900)
         return fallback
 
@@ -177,6 +209,7 @@ Return ONLY a valid JSON object in this exact format (no other text, no markdown
         response = ask_llm(prompt, article_title="Upcoming Market Events")
         cleaned = clean_json_output(response)
         data = json.loads(cleaned)
+        _tag_ai_estimated(data)
         set_cached_data("upcoming_events", data, 900)
         return data
     except Exception as e:
@@ -194,6 +227,7 @@ Return ONLY a valid JSON object in this exact format (no other text, no markdown
                 {"name": "Reliance Corporate Dividend Date", "time": "29 Jun", "impact": "Low", "companies": ["Reliance Industries"], "importance": 65}
             ]
         }
+        _tag_ai_estimated(fallback, is_fallback=True)
         set_cached_data("upcoming_events", fallback, 900)
         return fallback
 
@@ -231,6 +265,7 @@ Return ONLY a valid JSON object in this exact format (no other text, no markdown
         response = ask_llm(prompt, article_title="Top Opportunities & Risks")
         cleaned = clean_json_output(response)
         data = json.loads(cleaned)
+        _tag_ai_estimated(data)
         set_cached_data("opps_risks", data, 900)
         return data
     except Exception as e:
@@ -251,6 +286,7 @@ Return ONLY a valid JSON object in this exact format (no other text, no markdown
                 {"name": "Small Caps", "reason": "High valuations prompting profit-taking flows.", "confidence": 80}
             ]
         }
+        _tag_ai_estimated(fallback, is_fallback=True)
         set_cached_data("opps_risks", fallback, 900)
         return fallback
 
@@ -279,6 +315,10 @@ Return ONLY a valid JSON array in this exact format (no other text, no markdown 
         response = ask_llm(prompt, article_title="Sector Intelligence Analysis")
         cleaned = clean_json_output(response)
         data = json.loads(cleaned)
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    item["ai_estimated"] = True
         set_cached_data("sector_intel", data, 900)
         return data
     except Exception as e:
@@ -290,6 +330,9 @@ Return ONLY a valid JSON array in this exact format (no other text, no markdown 
             {"name": "Healthcare", "sentiment": "Neutral", "momentum": "Stable", "news_count": 8, "alert_count": 0, "trend": "Sideways", "companies_leading": ["Sun Pharma"]},
             {"name": "Automobile", "sentiment": "Positive", "momentum": "Moderate", "news_count": 10, "alert_count": 1, "trend": "Bullish", "companies_leading": ["Tata Motors"]}
         ]
+        for item in fallback:
+            item["ai_estimated"] = True
+            item["is_example_fallback"] = True
         set_cached_data("sector_intel", fallback, 900)
         return fallback
 
@@ -598,10 +641,9 @@ def analyze_watchlist_company(db: Session, watchlist_id: uuid.UUID, user_id: uui
     # Calculate average alert importance locally
     avg_alert_imp = 70
     if alerts:
-        try:
-            avg_alert_imp = sum([int(a.importance_score) for a in alerts if a.importance_score.isdigit()]) / len(alerts)
-        except Exception:
-            pass
+        scored = [a.importance_score for a in alerts if a.importance_score is not None]
+        if scored:
+            avg_alert_imp = sum(scored) / len(scored)
             
     attn_calc = calculate_attention_score(len(posts), len(alerts), avg_alert_imp, len(research_docs) > 0)
 

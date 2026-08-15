@@ -25,6 +25,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.explain import router as explain_router
 from app.api.routes.portfolio import router as portfolio_router
 from app.api.routes.workspace import router as workspace_router
+from app.core.config import settings
 from app.scheduler.news_scheduler import start_scheduler
 from app.scheduler.twitter_scheduler import start_twitter_scheduler
 
@@ -58,7 +59,13 @@ async def lifespan(app: FastAPI):
         # Run Preferences and Push Notification migrations
         from app.scripts.upgrade_preferences_o import upgrade_schema
         upgrade_schema()
-        
+
+        # P0 hardening: alert-queue column, research report ownership,
+        # importance_score type fix, and critical indexes. Idempotent.
+        from app.scripts.upgrade_p0_hardening import upgrade_p0_hardening
+        upgrade_p0_hardening()
+
+
         _migration_log = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "migration_status.log")
         with open(_migration_log, "w") as f:
             f.write("Migration status: SUCCESS\n")
@@ -84,52 +91,30 @@ async def lifespan(app: FastAPI):
         )
 
     # Start RSS news scheduler
-    news_scheduler = start_scheduler(interval_minutes=10)
+    news_scheduler = start_scheduler(interval_minutes=settings.NEWS_INTERVAL_MINUTES)
 
     # Start Twitter monitor scheduler
     twitter_scheduler = start_twitter_scheduler()
 
-    # Resolve signup conflict for user jaya7905@gmail.com
-    from app.db.database import SessionLocal
-    from app.models.user import User
-    db = SessionLocal()
-    try:
-        target_email = "jaya7905@gmail.com"
-        user = db.query(User).filter(User.email == target_email).first()
-        if user:
-            logger.info(f"[DB_CHECK] Found existing user with email {target_email}. Deleting to allow fresh signup.")
-            db.delete(user)
-            db.commit()
-            logger.info(f"[DB_CHECK] Successfully deleted user {target_email}.")
-        else:
-            logger.info(f"[DB_CHECK] User {target_email} does not exist in DB.")
-    except Exception as e:
-        logger.error(f"[DB_CHECK] Error during database cleanup: {e}")
-    finally:
-        db.close()
+    # Optional cache warming. Disabled by default: it previously ran LLM-backed
+    # dossier generation for a hardcoded account on every single boot.
+    if settings.ENABLE_STARTUP_PRELOAD:
+        import threading
 
-    # Preload frequent companies asynchronously in a background thread
-    import threading
-    def run_preloading():
-        from app.db.database import SessionLocal
-        from app.services.research_agent import preload_frequent_companies
-        db = SessionLocal()
-        try:
-            preload_frequent_companies(db)
-        except Exception as pe:
-            logger.error(f"Error in background cache preloading: {pe}")
-        finally:
-            db.close()
+        def run_preloading():
+            from app.db.database import SessionLocal
+            from app.services.research_agent import preload_frequent_companies
+            db = SessionLocal()
+            try:
+                preload_frequent_companies(db)
+            except Exception as pe:
+                logger.error(f"Error in background cache preloading: {pe}")
+            finally:
+                db.close()
 
-    threading.Thread(target=run_preloading, daemon=True).start()
+        threading.Thread(target=run_preloading, daemon=True).start()
 
-    # Log all registered FastAPI routes during startup
-    logger.info("Registered FastAPI Routes:")
-    for route in app.routes:
-        if hasattr(route, "path"):
-            logger.info(f"  {route.path}")
-        else:
-            logger.info(f"  {route}")
+    logger.info("Startup configuration: %s", settings.describe())
 
     yield
 
@@ -151,18 +136,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-frontend_url = os.getenv("FRONTEND_URL")
-origins = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
-if frontend_url:
-    for url in frontend_url.split(","):
-        url = url.strip()
-        if url and url not in origins:
-            origins.append(url)
-
+# Explicit allowlist only. The previous `https://.*\.vercel\.app` regex allowed
+# any Vercel-hosted site to make credentialed cross-origin requests.
+# Add production frontend origins via the FRONTEND_URL env var (comma separated).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -193,55 +172,11 @@ if _extra_routers:
 
 @app.get("/api/health")
 def health():
-    # Trigger database check reload
+    """Public liveness probe. Intentionally exposes no internal detail."""
     return {
         "status": "healthy",
         "service": "MarketBeacon AI"
     }
-
-
-@app.get("/api/debug-watchlist")
-def debug_watchlist_route():
-    import sys
-    import os
-    import traceback
-    from app.db.database import SessionLocal
-    from app.models.user import User
-    from app.services.watchlist_service import add_watchlist_keyword, analyze_watchlist_company
-    
-    db = SessionLocal()
-    res = {}
-    try:
-        user = db.query(User).filter(User.email == "sujan@marketbeacon.ai").first()
-        if not user:
-            return {"error": "Default user sujan@marketbeacon.ai not found"}
-        
-        # Try to add "Reliance Industries"
-        w = add_watchlist_keyword(
-            db,
-            keyword="Reliance Industries",
-            user_id=user.id,
-            company_name="Reliance Industries",
-            exchange="NSE"
-        )
-        res["watchlist_added"] = {
-            "id": str(w.id),
-            "keyword": w.keyword,
-            "company_name": w.company_name
-        }
-        
-        # Analyze watchlist company
-        analysis = analyze_watchlist_company(db, w.id, user.id, force=True)
-        res["analysis_keys"] = list(analysis.keys()) if analysis else None
-        res["status"] = "success"
-    except Exception as e:
-        res["status"] = "error"
-        res["error_type"] = type(e).__name__
-        res["error_message"] = str(e)
-        res["traceback"] = traceback.format_exc()
-    finally:
-        db.close()
-    return res
 
 
 @app.get("/")

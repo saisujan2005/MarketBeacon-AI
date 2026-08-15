@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, JSON, Text, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, JSON, Text, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -19,7 +19,8 @@ class Notification(Base):
     user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
     keyword = Column(
@@ -83,3 +84,10 @@ class Notification(Base):
     )
 
     user = relationship("User", back_populates="notifications")
+
+    __table_args__ = (
+        # Feed query: this user's notifications ordered by recency.
+        Index("ix_notifications_user_created", "user_id", "created_at"),
+        # Duplicate suppression in generate_notifications(): (user_id, keyword, title).
+        Index("ix_notifications_user_keyword", "user_id", "keyword"),
+    )

@@ -155,7 +155,7 @@ def upgrade_and_backfill():
                     notif.event_type = alert.event_type
                     # Try to parse string score to integer
                     try:
-                        notif.importance_score = int(alert.importance_score) if alert.importance_score else None
+                        notif.importance_score = alert.importance_score
                     except ValueError:
                         notif.importance_score = None
                         

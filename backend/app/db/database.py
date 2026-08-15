@@ -1,16 +1,16 @@
-import os
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-load_dotenv()
+from app.core.config import settings
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:Sujan%402005@localhost:5432/marketbeacon"
+# DATABASE_URL is validated in app.core.config: the process will not start
+# without it. No hardcoded credential fallback lives here any more.
+DATABASE_URL = settings.DATABASE_URL
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
 )
-
-engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
     autocommit=False,
