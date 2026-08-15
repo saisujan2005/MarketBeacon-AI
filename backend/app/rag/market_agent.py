@@ -12,11 +12,13 @@ from app.rag.judge_agent import (
 logger = logging.getLogger(__name__)
 
 
-def answer_question(question):
+def answer_question(question, user_id=None):
 
     start = time.time()
 
-    docs = retrieve(question)
+    # user_id scopes retrieval to the caller's own alerts/notifications/briefings
+    # and research reports. Without it the retriever would mix tenants.
+    docs = retrieve(question, user_id=user_id)
 
     logger.info(
         f"Retrieval: {time.time() - start:.2f} sec"

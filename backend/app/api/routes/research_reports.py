@@ -1,22 +1,33 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from app.db.database import get_db
+from app.db.dependencies import get_current_user
 from app.models.research_report import ResearchReport
+from app.models.user import User
 from app.agents.research_report_agent import generate_research_report
 
 router = APIRouter()
 
+# Research reports are private to the user who generated them. Every query in
+# this module is scoped by ResearchReport.user_id == current_user.id.
+
 
 @router.post("/research-reports/generate")
-def generate_report(data: dict, db: Session = Depends(get_db)):
+def generate_report(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Triggers synthesis of a new multi-agent research report for a target entity.
+    Triggers synthesis of a new multi-agent research report for a target entity,
+    owned by the authenticated user.
     """
     entity = data.get("entity", "").strip()
     if not entity:
         raise HTTPException(status_code=400, detail="Entity name is required.")
 
-    report = generate_research_report(db, entity)
+    report = generate_research_report(db, entity, user_id=current_user.id)
     return {
         "message": f"Report generated successfully for {entity}",
         "report": {
@@ -29,12 +40,16 @@ def generate_report(data: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/research-reports")
-def get_reports_list(db: Session = Depends(get_db)):
+def get_reports_list(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Returns list of previously generated research reports.
+    Returns the list of research reports owned by the authenticated user.
     """
     reports = (
         db.query(ResearchReport)
+        .filter(ResearchReport.user_id == current_user.id)
         .order_by(ResearchReport.created_at.desc())
         .all()
     )
@@ -50,11 +65,23 @@ def get_reports_list(db: Session = Depends(get_db)):
 
 
 @router.get("/research-reports/{report_id}")
-def get_report(report_id: str, db: Session = Depends(get_db)):
+def get_report(
+    report_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Retrieves full report details for a specific report ID.
+    Retrieves a single report. Returns 404 (not 403) for reports owned by another
+    user so the endpoint does not confirm the existence of other users' data.
     """
-    report = db.query(ResearchReport).filter(ResearchReport.id == report_id).first()
+    report = (
+        db.query(ResearchReport)
+        .filter(
+            ResearchReport.id == report_id,
+            ResearchReport.user_id == current_user.id,
+        )
+        .first()
+    )
     if not report:
         raise HTTPException(status_code=404, detail="Research report not found.")
 

@@ -39,7 +39,23 @@ def clear_portfolio_cache(user_id=None):
         _PORTFOLIO_CACHE.clear()
         logger.info("[Portfolio Cache] Cleared all caches globally")
 
-# Mapped current prices and daily change percentage for key companies
+# ─────────────────────────────────────────────────────────────────────────────
+# SIMULATED PRICES
+#
+# These are static placeholder quotes, NOT live market prices. They never change.
+# Portfolio valuations, P&L, and allocation percentages derived from them are
+# therefore illustrative only.
+#
+# Every holding returned by this service carries `price_is_simulated`, and the
+# portfolio payload carries a top-level `simulated_data` block that the frontend
+# renders as a visible banner/badge.
+#
+# Replacing this with a live market data provider is tracked separately (P1).
+# ─────────────────────────────────────────────────────────────────────────────
+SIMULATED_PRICE_NOTICE = (
+    "Prices and valuations are simulated placeholder data, not live market quotes."
+)
+
 MOCK_MARKET_PRICES = {
     "HDFC Bank": {"price": 1650.00, "change_percent": 2.45, "sector": "Banking", "industry": "Private Banking"},
     "TCS": {"price": 3850.00, "change_percent": 1.25, "sector": "Technology", "industry": "IT Services"},
@@ -53,11 +69,30 @@ MOCK_MARKET_PRICES = {
 }
 
 def get_holding_price_info(company_name: str) -> dict:
+    """
+    Returns a SIMULATED price/sector record for a company.
+
+    `is_simulated` is always True here, and `price_known` distinguishes companies
+    present in the placeholder table from unrecognised ones (which previously
+    received a silent, arbitrary 120.00 with no indication it was a placeholder).
+    """
     normalized = normalize_company_name(company_name)
     if normalized in MOCK_MARKET_PRICES:
-        return MOCK_MARKET_PRICES[normalized]
-    # Default fallback for unrecognized listings
-    return {"price": 120.00, "change_percent": 0.00, "sector": "Other", "industry": "Unassigned"}
+        info = dict(MOCK_MARKET_PRICES[normalized])
+        info["is_simulated"] = True
+        info["price_known"] = True
+        return info
+
+    # Unrecognised listing: still simulated, and explicitly flagged as a
+    # placeholder rather than presented as a real quote.
+    return {
+        "price": 0.00,
+        "change_percent": 0.00,
+        "sector": "Other",
+        "industry": "Unassigned",
+        "is_simulated": True,
+        "price_known": False,
+    }
 
 def calculate_portfolio_metrics(db: Session, user_id, force=False) -> dict:
     """
@@ -88,8 +123,19 @@ def calculate_portfolio_metrics(db: Session, user_id, force=False) -> dict:
 
     for h in equity_holdings:
         info = get_holding_price_info(h.company_name)
-        curr_price = h.current_price if h.current_price is not None else info["price"]
-        
+        if h.current_price is not None:
+            # User-entered price: the only genuinely real number available.
+            curr_price = h.current_price
+            price_is_simulated = False
+        elif info.get("price_known"):
+            curr_price = info["price"]
+            price_is_simulated = True
+        else:
+            # No quote at all. Fall back to the user's own cost basis rather than
+            # inventing a price, so P&L reads 0 instead of a fabricated figure.
+            curr_price = h.average_buy_price
+            price_is_simulated = True
+
         cost_value = h.quantity * h.average_buy_price
         curr_value = h.quantity * curr_price
         
@@ -137,6 +183,7 @@ def calculate_portfolio_metrics(db: Session, user_id, force=False) -> dict:
             "quantity": h.quantity,
             "average_buy_price": h.average_buy_price,
             "current_price": curr_price,
+            "price_is_simulated": price_is_simulated,
             "value": curr_value,
             "cost": cost_value,
             "gain_loss": gain_loss,
@@ -226,9 +273,14 @@ def calculate_portfolio_metrics(db: Session, user_id, force=False) -> dict:
         "top_losers": top_losers,
         "largest_holding": largest_holding_name,
         "mood": mood,
-        "holdings": holdings_list
+        "holdings": holdings_list,
+        # Consumed by the frontend to render a visible "simulated data" banner.
+        "simulated_data": {
+            "prices": True,
+            "notice": SIMULATED_PRICE_NOTICE,
+        },
     }
-    
+
     set_cached_portfolio(cache_key, summary_payload)
     return summary_payload
 

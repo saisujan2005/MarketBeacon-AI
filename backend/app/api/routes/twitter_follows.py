@@ -1,10 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
 from app.db.database import SessionLocal
+from app.db.dependencies import get_current_user, require_admin
 from app.models.twitter_follow import TwitterFollow
 from app.models.tweet_notification import TweetNotification
+from app.models.user import User
 
 router = APIRouter(prefix="/twitter", tags=["Twitter"])
 
@@ -17,7 +19,7 @@ class AddFollowRequest(BaseModel):
 # ── GET /twitter/follows ──────────────────────────────────────────────────────
 
 @router.get("/follows")
-def get_follows():
+def get_follows(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         follows = db.query(TwitterFollow).order_by(
@@ -39,7 +41,7 @@ def get_follows():
 # ── POST /twitter/follows ─────────────────────────────────────────────────────
 
 @router.post("/follows")
-def add_follow(data: AddFollowRequest):
+def add_follow(data: AddFollowRequest, admin_user: User = Depends(require_admin)):
     handle = data.handle.lstrip("@").strip().lower()
 
     if not handle:
@@ -78,7 +80,7 @@ def add_follow(data: AddFollowRequest):
 # ── DELETE /twitter/follows/{id} ──────────────────────────────────────────────
 
 @router.delete("/follows/{follow_id}")
-def delete_follow(follow_id: str):
+def delete_follow(follow_id: str, admin_user: User = Depends(require_admin)):
     db = SessionLocal()
     try:
         follow = (
@@ -100,7 +102,7 @@ def delete_follow(follow_id: str):
 # ── GET /twitter/notifications ────────────────────────────────────────────────
 
 @router.get("/notifications")
-def get_tweet_notifications():
+def get_tweet_notifications(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         notifications = (
@@ -131,7 +133,7 @@ def get_tweet_notifications():
 # ── PATCH /twitter/notifications/{id}/read ────────────────────────────────────
 
 @router.patch("/notifications/{notification_id}/read")
-def mark_as_read(notification_id: str):
+def mark_as_read(notification_id: str, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     try:
         notif = (

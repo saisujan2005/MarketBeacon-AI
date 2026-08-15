@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.db.database import get_db
+from app.db.dependencies import get_current_user
+from app.models.user import User
 from app.services.timeline_service import (
     get_timeline_for_entity,
     get_timeline_entities,
@@ -11,7 +13,10 @@ router = APIRouter()
 
 
 @router.get("/timeline/entities")
-def get_entities(db: Session = Depends(get_db)):
+def get_entities(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Returns list of all unique entities that have timeline events.
     """
@@ -19,7 +24,11 @@ def get_entities(db: Session = Depends(get_db)):
 
 
 @router.get("/timeline/{entity_name}")
-def get_timeline(entity_name: str, db: Session = Depends(get_db)):
+def get_timeline(
+    entity_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Returns the chronological timeline of events for a given entity.
     """
@@ -40,7 +49,11 @@ def get_timeline(entity_name: str, db: Session = Depends(get_db)):
 
 @router.post("/timeline/{entity_name}/summary")
 @router.post("/api/timeline/{entity_name}/summary")
-def get_entity_timeline_summary(entity_name: str, db: Session = Depends(get_db)):
+def get_entity_timeline_summary(
+    entity_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Generates an AI summary of the timeline events for the given entity.
     """

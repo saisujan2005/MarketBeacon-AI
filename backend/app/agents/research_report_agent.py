@@ -119,20 +119,31 @@ def risk_agent_sub(posts: list) -> list:
 # COORDINATOR AGENT
 # =====================================================================
 
-def generate_research_report(db: Session, entity_name: str, force: bool = False) -> ResearchReport:
+def generate_research_report(
+    db: Session,
+    entity_name: str,
+    user_id,
+    force: bool = False,
+) -> ResearchReport:
     """
-    Checks the database cache first. If a report was generated for the target entity
-    in the last 6 hours and force=False, returns it immediately.
+    Checks the caller's own report cache first. If that user generated a report for
+    the target entity in the last 6 hours and force=False, returns it immediately.
     Otherwise, runs 5 sub-agents to synthesize an in-depth AI research report using Groq.
+
+    `user_id` is required: reports are private per user and must never be read
+    from, or written without, an owner.
     """
     entity_name = entity_name.strip()
+    if user_id is None:
+        raise ValueError("generate_research_report requires a user_id (reports are per-user).")
 
     if not force:
-        # Check cache (6 hours TTL)
+        # Check this user's cache (6 hours TTL)
         cache_limit = datetime.utcnow() - timedelta(hours=6)
         cached_report = (
             db.query(ResearchReport)
             .filter(
+                ResearchReport.user_id == user_id,
                 ResearchReport.entity_name.ilike(entity_name),
                 ResearchReport.created_at >= cache_limit
             )
@@ -212,6 +223,7 @@ Rules:
 
         report = ResearchReport(
             id=uuid.uuid4(),
+            user_id=user_id,
             entity_name=entity_name,
             report_data=report_data
         )
@@ -235,6 +247,7 @@ Rules:
         }
         report = ResearchReport(
             id=uuid.uuid4(),
+            user_id=user_id,
             entity_name=entity_name,
             report_data=fallback_data
         )

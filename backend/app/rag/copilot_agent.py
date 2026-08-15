@@ -101,9 +101,14 @@ def answer_copilot_question(
     cached_research = None
     if company:
         yesterday = datetime.utcnow() - timedelta(hours=24)
+        # Scoped to the requesting user: research reports are private.
         cached = (
             db.query(ResearchReport)
-            .filter(ResearchReport.entity_name == company, ResearchReport.created_at >= yesterday)
+            .filter(
+                ResearchReport.user_id == user_id,
+                ResearchReport.entity_name == company,
+                ResearchReport.created_at >= yesterday,
+            )
             .order_by(ResearchReport.created_at.desc())
             .first()
         )
@@ -283,6 +288,7 @@ Provide 3 suggested follow-up questions for further research.
             response_text = ask_llm(prompt, article_title=f"Copilot Chat: {session.title}")
             if company:
                 report = ResearchReport(
+                    user_id=user_id,
                     entity_name=company,
                     report_data={"report_text": response_text},
                     created_at=datetime.utcnow()

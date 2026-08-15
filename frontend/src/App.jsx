@@ -197,6 +197,86 @@ const PREDICTION_COLORS = {
   NEUTRAL: { text: "#94a3b8", icon: "⬘" },
 };
 
+// ── Data-provenance labelling ────────────────────────────────────────────────
+// MarketBeacon still ships placeholder prices/fundamentals and LLM-estimated
+// market intelligence. These components make that visible to the user instead
+// of presenting simulated numbers as live market data.
+
+function SimulatedBadge({ title = "Simulated placeholder data - not a live market quote" }) {
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-block",
+        marginLeft: 6,
+        padding: "1px 6px",
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        color: "#fbbf24",
+        background: "#fbbf2415",
+        border: "1px solid #fbbf2440",
+        borderRadius: 4,
+        verticalAlign: "middle",
+        whiteSpace: "nowrap",
+      }}
+    >
+      SIMULATED
+    </span>
+  );
+}
+
+function AiEstimateBadge({ title = "AI-estimated - not verified market data" }) {
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-block",
+        marginLeft: 6,
+        padding: "1px 6px",
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        color: "#a78bfa",
+        background: "#a78bfa15",
+        border: "1px solid #a78bfa40",
+        borderRadius: 4,
+        verticalAlign: "middle",
+        whiteSpace: "nowrap",
+      }}
+    >
+      AI ESTIMATE
+    </span>
+  );
+}
+
+function DataNoticeBanner({ text, tone = "warn" }) {
+  const palette =
+    tone === "ai"
+      ? { color: "#a78bfa", bg: "#a78bfa12", border: "#a78bfa33" }
+      : { color: "#fbbf24", bg: "#fbbf2412", border: "#fbbf2433" };
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 12px",
+        marginBottom: 12,
+        fontSize: 11,
+        lineHeight: 1.5,
+        color: palette.color,
+        background: palette.bg,
+        border: `1px solid ${palette.border}`,
+        borderRadius: 6,
+      }}
+    >
+      <span style={{ fontSize: 13 }}>⚠</span>
+      <span>{text}</span>
+    </div>
+  );
+}
+
 export default function App() {
   const { user, loading: authLoading, logout } = useAuth();
   const [authState, setAuthState] = useState("landing"); // "landing", "login", "register", "forgot"
@@ -403,7 +483,12 @@ export default function App() {
       await api.post("/admin/reprocess-posts");
       alert("Database reprocessing started in the background. Please wait 10 seconds and reload the page.");
     } catch (err) {
-      alert("Failed to start reprocessing: " + err.message);
+      // Reprocessing is now an admin-only operation.
+      if (err.response && err.response.status === 403) {
+        alert("Reprocessing requires an administrator account.");
+      } else {
+        alert("Failed to start reprocessing: " + err.message);
+      }
     }
   };
 
@@ -2046,6 +2131,7 @@ export default function App() {
                   <div>
                     <h3 style={{ fontSize: 14, fontWeight: 700, color: "#cbd5e1", margin: "0 0 16px 0", display: "flex", alignItems: "center", gap: 8 }}>
                       📊 Market Health Dashboard
+                      {marketHealth?._meta?.ai_estimated && <AiEstimateBadge />}
                     </h3>
                     {marketHealth ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -2272,6 +2358,7 @@ export default function App() {
                 <div style={s.card}>
                   <h3 style={{ fontSize: 14, fontWeight: 700, color: "#cbd5e1", margin: "0 0 12px 0" }}>
                     🔥 Sector Intelligence
+                    {sectorsIntel?.[0]?.ai_estimated && <AiEstimateBadge />}
                   </h3>
                   {sectorsIntel.length > 0 ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2315,6 +2402,7 @@ export default function App() {
                 <div style={s.card}>
                   <h3 style={{ fontSize: 14, fontWeight: 700, color: "#cbd5e1", margin: "0 0 12px 0" }}>
                     📅 Upcoming Market Events
+                    {upcomingEvents?._meta?.ai_estimated && <AiEstimateBadge />}
                   </h3>
                   {upcomingEvents ? (
                     <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2405,6 +2493,7 @@ export default function App() {
                 <div style={s.card}>
                   <h3 style={{ fontSize: 14, fontWeight: 700, color: "#10b981", margin: "0 0 12px 0" }}>
                     🚀 Today's Top Opportunities (Buy / Long catalyst)
+                    {oppsRisks?._meta?.ai_estimated && <AiEstimateBadge />}
                   </h3>
                   {oppsRisks ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2427,6 +2516,7 @@ export default function App() {
                 <div style={s.card}>
                   <h3 style={{ fontSize: 14, fontWeight: 700, color: "#ef4444", margin: "0 0 12px 0" }}>
                     ⚠️ Today's Top Risks (Sell / Hedge catalyst)
+                    {oppsRisks?._meta?.ai_estimated && <AiEstimateBadge />}
                   </h3>
                   {oppsRisks ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -5368,6 +5458,14 @@ export default function App() {
                 </div>
               ) : (
                 <>
+                  {portfolioData?.simulated_data?.prices && (
+                    <DataNoticeBanner
+                      text={
+                        portfolioData.simulated_data.notice ||
+                        "Prices and valuations are simulated placeholder data, not live market quotes."
+                      }
+                    />
+                  )}
                   <div style={{
                     background: "linear-gradient(135deg, #0b1329, #050811)",
                     border: "1px solid #1e293b",
@@ -5384,6 +5482,7 @@ export default function App() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
                         Portfolio Valuation
+                        {portfolioData?.simulated_data?.prices && <SimulatedBadge />}
                       </span>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
                         <span style={{ fontSize: 32, fontWeight: 800, color: "#f8fafc", fontFamily: "monospace" }}>
@@ -5659,7 +5758,10 @@ export default function App() {
                                     </span>
                                   </div>
                                   <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                                    <span style={{ fontSize: 9, color: "#64748b" }}>Current Price</span>
+                                    <span style={{ fontSize: 9, color: "#64748b" }}>
+                                      Current Price
+                                      {item.price_is_simulated && <SimulatedBadge />}
+                                    </span>
                                     <span style={{ fontSize: 12, fontWeight: 600, color: "#cbd5e1", fontFamily: "monospace" }}>
                                       ₹{item.current_price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                                     </span>

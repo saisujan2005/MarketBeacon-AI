@@ -16,20 +16,26 @@ logger = logging.getLogger(__name__)
 def hybrid_search(query, user_id: uuid.UUID = None, top_k=5, include_research_library=False):
     db = SessionLocal()
     try:
-        # Posts are global scraped intelligence
+        # Posts are global scraped intelligence — shared, non-private market news.
         posts = db.query(Post).all()
-        
-        # Scope user data by user_id if provided
+
+        # Everything below is PRIVATE per-user data. Without an authenticated
+        # user_id we retrieve none of it rather than falling back to a global
+        # query, which previously mixed every tenant's data into one context.
         if user_id:
             alerts = db.query(Alert).filter(Alert.user_id == user_id).all()
             notifications = db.query(Notification).filter(Notification.user_id == user_id).all()
             briefings = db.query(DailyBriefing).filter(DailyBriefing.user_id == user_id).all()
-            reports = db.query(ResearchReport).all() # Global or keep general
+            reports = db.query(ResearchReport).filter(ResearchReport.user_id == user_id).all()
         else:
-            alerts = db.query(Alert).all()
-            notifications = db.query(Notification).all()
-            briefings = db.query(DailyBriefing).all()
-            reports = db.query(ResearchReport).all()
+            logger.warning(
+                "hybrid_search called without user_id; private sources (alerts, "
+                "notifications, briefings, research reports) are excluded."
+            )
+            alerts = []
+            notifications = []
+            briefings = []
+            reports = []
 
         documents = []
         lookup = {}

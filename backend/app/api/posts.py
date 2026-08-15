@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from uuid import UUID
 
-from app.db.dependencies import get_db
+from app.db.dependencies import get_db, get_current_user
 from app.models.post import Post
+from app.models.user import User
 from app.schemas.post import PostResponse
 from app.rag.llm_service import ask_llm
 
@@ -18,8 +19,11 @@ router = APIRouter(
 def get_posts(
     page: int = 1,
     limit: int = 20,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    page = max(page, 1)
+    limit = max(1, min(limit, 100))
     offset = (page - 1) * limit
 
     # Sort news by posted_at DESC (falling back to fetched_at DESC)
@@ -35,7 +39,11 @@ def get_posts(
 
 
 @router.post("/{post_id}/summarize")
-def summarize_post(post_id: UUID, db: Session = Depends(get_db)):
+def summarize_post(
+    post_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Generate an AI-structured explanation of a news article:
     1. What happened

@@ -116,7 +116,10 @@ def explain_item(
     AI Explain Engine orchestrator compiling structured cognitive insights
     for News, Smart Alerts, Watchlist Companies, Events, or Raw text selections.
     """
-    cache_key = f"{item_type}:{item_id_or_name}"
+    # Cache key is namespaced by user: explanations embed user-scoped context
+    # (watchlist priority, related alerts/conversations), so a shared key would
+    # serve one user's derived data to another.
+    cache_key = f"{user_id}:{item_type}:{item_id_or_name}"
     if highlighted_text:
         cache_key += f":{hash(highlighted_text)}"
 
@@ -144,7 +147,14 @@ def explain_item(
             pass
     elif item_type == "alert":
         try:
-            alert = db.query(Alert).filter(Alert.id == uuid.UUID(item_id_or_name)).first()
+            # Alerts are private per user: scope the lookup to the requester so a
+            # user cannot explain (and thereby read) another user's alert.
+            alert_query = db.query(Alert).filter(Alert.id == uuid.UUID(item_id_or_name))
+            if user_id:
+                alert_query = alert_query.filter(Alert.user_id == user_id)
+            else:
+                alert_query = alert_query.filter(False)
+            alert = alert_query.first()
             if alert:
                 target_title = alert.title
                 target_content = alert.summary_text or alert.title

@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Query, Depends, HTTPException, status
 from typing import Optional
-from sqlalchemy import cast, Integer
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.dependencies import get_current_user
@@ -38,7 +37,7 @@ def get_alerts(
     if source:
         query = query.filter(Post.source_id == source)
     if importance_min is not None:
-        query = query.filter(cast(Alert.importance_score, Integer) >= importance_min)
+        query = query.filter(Alert.importance_score >= importance_min)
     if direction:
         if direction.upper() != "INBOUND":
             query = query.filter(False)
@@ -47,7 +46,7 @@ def get_alerts(
     if sort == "oldest":
         query = query.order_by(Alert.created_at.asc())
     elif sort == "importance":
-        query = query.order_by(cast(Alert.importance_score, Integer).desc())
+        query = query.order_by(Alert.importance_score.desc())
     elif sort == "confidence":
         query = query.order_by(Post.confidence.desc())
     else:
@@ -71,7 +70,7 @@ def get_alerts(
             "id": str(alert.id),
             "title": alert.title,
             "event_type": alert.event_type,
-            "importance_score": int(alert.importance_score) if alert.importance_score else 0,
+            "importance_score": alert.importance_score or 0,
             "source_id": post.source_id if post else "unknown",
             "post_url": post.post_url if post else None,
             "impact_level": post.impact_level if post else "UNKNOWN",

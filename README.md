@@ -132,7 +132,11 @@ FRONTEND_URL=http://localhost:5173
 DISABLE_LOCAL_ML=False # Set to True on Render (512MB RAM) to bypass local ML models
 ```
 
-> **Security Note**: The JWT secret is auto-generated in `auth_service.py`. For production, set `JWT_SECRET` as an environment variable with a cryptographically random 64+ character string.
+> **Security Note**: `JWT_SECRET` is **required in production** — the service refuses
+> to start without it (and rejects secrets shorter than 32 characters). Generate one with
+> `python -c "import secrets; print(secrets.token_urlsafe(64))"`. In development a
+> temporary key is generated per process, so sessions do not survive a restart until
+> you set `JWT_SECRET` in `.env`.
 
 ---
 
@@ -217,10 +221,17 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### Start Frontend
 
+In a **separate terminal** from the backend:
+
 ```bash
 cd frontend
 npm run dev
 ```
+
+> **Note:** `vite.config.js` used to auto-start the backend by executing shell
+> commands read from a file in the repository root, and force-killed all local
+> Python processes. That has been removed for security. Run the two processes in
+> two terminals as shown above.
 
 The application will be available at:
 - **Frontend**: http://localhost:5173
@@ -281,9 +292,16 @@ The application manages 20+ PostgreSQL tables:
 
 ## Known Limitations
 
-1. **Financial Data**: Current prices use a local mock provider (`LocalFinancialDataProvider`). For live prices, implement the `FinancialDataProvider` interface with Yahoo Finance or Alpha Vantage.
+1. **Financial Data — SIMULATED**: Prices and company fundamentals are static placeholder
+   values from `LocalFinancialDataProvider` / `MOCK_MARKET_PRICES`, not live market data.
+   Portfolio valuations and P&L derived from them are illustrative only, and the UI labels
+   them with a **SIMULATED** badge. Several market-intelligence panels (upcoming events,
+   opportunities/risks, sector intelligence, market health) are LLM estimates with no
+   grounding data and are labelled **AI ESTIMATE**. For live prices, implement the
+   `FinancialDataProvider` interface with a real market data source.
 2. **Embedded Qdrant**: Vector DB runs in local filesystem mode. For production scale, deploy Qdrant as a standalone service.
-3. **CORS**: Currently configured for `localhost:5173` only. Update `allow_origins` in `main.py` for production domains.
+3. **CORS**: Origins come from the `FRONTEND_URL` environment variable (comma-separated
+   allowlist). The previous `https://*.vercel.app` wildcard has been removed.
 4. **Rate Limiting**: Groq API has rate limits. The system includes exponential backoff and circuit breaker patterns, but sustained high load may trigger 429 errors.
 5. **Local NLP Models**: FinBERT and spaCy are optional. Without them, the system falls back to rule-based sentiment and entity extraction.
 
