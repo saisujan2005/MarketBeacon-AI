@@ -8,6 +8,8 @@ export default function Onboarding({ onComplete }) {
   const [sectors, setSectors] = useState([]);
   const [companies, setCompanies] = useState("");
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(null);   // { current, total, name }
+  const [failed, setFailed] = useState([]);
 
   const toggleSector = (sec) => {
     if (sectors.includes(sec)) {
@@ -27,11 +29,13 @@ export default function Onboarding({ onComplete }) {
 
   const handleFinish = async () => {
     setLoading(true);
+    setFailed([]);
     try {
-      // 1. Save preferences
+      // 1. Save preferences. dashboard_layout doubles as the server-side signal
+      //    that this user has completed onboarding.
       await updatePreferences({
         market_region: market,
-        dashboard_layout: sectors.join(","),
+        dashboard_layout: sectors.join(",") || "none",
       });
 
       // 2. Set preferred market
@@ -39,25 +43,46 @@ export default function Onboarding({ onComplete }) {
         preferred_market: market
       });
 
-      // 3. Auto-populate watchlists for favorites (optional, mock or simple request)
+      // 3. Seed the watchlist.
+      //    Each company is added independently: previously a single failure
+      //    aborted the whole loop and silently dropped the remaining entries.
+      //    analyze:false keeps this fast — the watchlist page runs the AI
+      //    analysis on demand rather than blocking signup on ~3 LLM calls each.
       if (companies.trim()) {
-        const compsList = companies.split(",").map((c) => c.trim()).filter(Boolean);
-        // We can send these to watchlist add api
-        try {
-          const api = (await import("../services/api")).default;
-          for (const c of compsList) {
-            await api.post("/api/watchlist/add", { keyword: c });
+        const compsList = companies
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean);
+
+        const api = (await import("../services/api")).default;
+        const failures = [];
+
+        for (let i = 0; i < compsList.length; i++) {
+          const name = compsList[i];
+          setProgress({ current: i + 1, total: compsList.length, name });
+          try {
+            await api.post("/api/watchlist/add", { keyword: name, analyze: false });
+          } catch (we) {
+            console.warn(`Could not add "${name}" to watchlist`, we);
+            failures.push(name);
           }
-        } catch (we) {
-          console.warn("Could not save watchlist items", we);
+        }
+
+        setProgress(null);
+        if (failures.length) {
+          // Surface the problem instead of silently losing the user's input.
+          setFailed(failures);
+          setLoading(false);
+          return;
         }
       }
 
       onComplete();
     } catch (e) {
       console.error("Onboarding preference save failed", e);
-      onComplete(); // proceed anyway to not block user
+      onComplete(); // proceed anyway to not block the user
     } finally {
+      setProgress(null);
       setLoading(false);
     }
   };
@@ -182,19 +207,49 @@ export default function Onboarding({ onComplete }) {
                 onChange={(e) => setCompanies(e.target.value)}
                 autoFocus
               />
-              <p className="field-hint">You can add, edit, or remove these anytime from watchlists.</p>
+              <p className="field-hint">
+                Optional — you can add, edit, or remove these anytime from your watchlist.
+              </p>
             </div>
 
+            {progress && (
+              <p className="field-hint" style={{ color: "#06b6d4" }}>
+                Adding {progress.name}… ({progress.current} of {progress.total})
+              </p>
+            )}
+
+            {failed.length > 0 && (
+              <div
+                style={{
+                  padding: "10px 12px",
+                  marginTop: 12,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: "#fbbf24",
+                  background: "#fbbf2412",
+                  border: "1px solid #fbbf2433",
+                  borderRadius: 6,
+                }}
+              >
+                Could not add: <strong>{failed.join(", ")}</strong>. Everything else was saved —
+                you can add these from your watchlist at any time.
+              </div>
+            )}
+
             <div className="onboarding-footer">
-              <button className="btn-secondary" onClick={handlePrevStep}>
+              <button className="btn-secondary" onClick={handlePrevStep} disabled={loading}>
                 ← Back
               </button>
               <button
                 className="btn-primary"
-                onClick={handleFinish}
+                onClick={failed.length > 0 ? onComplete : handleFinish}
                 disabled={loading}
               >
-                {loading ? "Saving Profile..." : "Complete Setup ✓"}
+                {loading
+                  ? "Setting up your terminal..."
+                  : failed.length > 0
+                    ? "Continue anyway →"
+                    : "Complete Setup ✓"}
               </button>
             </div>
           </div>

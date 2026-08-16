@@ -1,7 +1,10 @@
 import logging
+from datetime import datetime
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.core.config import settings
 from app.db.database import SessionLocal
 from app.collectors.rss_collector import collect_rss_feed
 from app.scripts.score_posts import score_posts
@@ -97,7 +100,22 @@ def run_ingestion_pipeline():
 
 
 def start_scheduler(interval_minutes: int = 10):
+    """
+    Starts the background news ingestion scheduler and returns it.
+
+    Returns promptly. The first ingestion pass is scheduled to fire immediately
+    on the scheduler's own worker thread rather than being executed inline:
+    calling run_ingestion_pipeline() here previously blocked the FastAPI lifespan
+    until every RSS feed had been fetched and scored, so the service answered no
+    requests (including health checks) until then — and a single hanging feed
+    could delay startup indefinitely.
+    """
     scheduler = BackgroundScheduler()
+
+    job_kwargs = {}
+    if settings.RUN_INGESTION_ON_STARTUP:
+        # Fire once, right away, without blocking the caller.
+        job_kwargs["next_run_time"] = datetime.now()
 
     scheduler.add_job(
         func=run_ingestion_pipeline,
@@ -106,9 +124,17 @@ def start_scheduler(interval_minutes: int = 10):
         name="Collect news + score + alerts + notifications",
         replace_existing=True,
         misfire_grace_time=60,
+        # A run can now outlast its interval; never stack overlapping runs, and
+        # collapse any missed firings into a single catch-up run.
+        max_instances=1,
+        coalesce=True,
+        **job_kwargs,
     )
 
     scheduler.start()
-    logger.info(f"Scheduler started - running every {interval_minutes} minutes")
-    run_ingestion_pipeline()
+    logger.info(
+        "News scheduler started - every %s minutes (first run %s)",
+        interval_minutes,
+        "queued now" if settings.RUN_INGESTION_ON_STARTUP else f"in {interval_minutes} min",
+    )
     return scheduler
