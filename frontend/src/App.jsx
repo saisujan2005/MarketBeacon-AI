@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "./services/api";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
@@ -281,12 +281,23 @@ export default function App() {
   const { user, loading: authLoading, logout } = useAuth();
   const [authState, setAuthState] = useState("landing"); // "landing", "login", "register", "forgot"
   
+  // A user counts as onboarded if any of these hold. `dashboard_layout` is
+  // written by onboarding, so it survives a change of browser or device — the
+  // localStorage flag alone re-ran onboarding for every user whose market was
+  // "US" (the column default) each time they signed in somewhere new.
+  const isOnboardedUser = (u) => {
+    if (!u) return false;
+    if (localStorage.getItem(`onboarded_${u.id}`) === "true") return true;
+    if (u.preferred_market && u.preferred_market !== "US") return true;
+    const layout = u.preferences?.dashboard_layout;
+    return Boolean(layout && layout !== "default");
+  };
+
   const [onboarded, setOnboarded] = useState(() => {
     const cachedUser = localStorage.getItem("user");
     if (!cachedUser) return false;
     try {
-      const u = JSON.parse(cachedUser);
-      return localStorage.getItem(`onboarded_${u.id}`) === "true" || u.preferred_market !== "US";
+      return isOnboardedUser(JSON.parse(cachedUser));
     } catch (e) {
       return false;
     }
@@ -385,6 +396,11 @@ export default function App() {
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
   const [watchlists, setWatchlists] = useState([]);
+  // Guards for the background "fill in missing analysis" pass (see effect below).
+  const attemptedAnalysisRef = useRef(new Set());
+  const backgroundAnalysisRunningRef = useRef(false);
+  const [companySuggestions, setCompanySuggestions] = useState([]);
+  const [addingCompany, setAddingCompany] = useState(null);
   const [newKeyword, setNewKeyword] = useState("");
   // Watchlist Intelligence States
   const [watchlistBrief, setWatchlistBrief] = useState(null);
@@ -787,7 +803,6 @@ export default function App() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [dailyBriefing, setDailyBriefing] = useState(null);
   const [briefingHistory, setBriefingHistory] = useState([]);
-  const [watchlistNews, setWatchlistNews] = useState([]);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
   const [entitySearchQuery, setEntitySearchQuery] = useState("");
   const [timelineSummary, setTimelineSummary] = useState("");
@@ -826,10 +841,6 @@ export default function App() {
   const fetchDailyBriefing = () => {
     api.get("/daily-briefing/latest").then(r => setDailyBriefing(r.data)).catch(() => {});
     api.get("/daily-briefing/history").then(r => setBriefingHistory(r.data)).catch(() => {});
-  };
-
-  const fetchWatchlistNews = () => {
-    api.get("/watchlist/news").then(r => setWatchlistNews(r.data)).catch(() => {});
   };
 
   // Filter notifications in-memory (Feature 3)
@@ -938,6 +949,17 @@ export default function App() {
 
 
   useEffect(() => {
+    // Load dashboard data only once the dashboard is actually shown.
+    //
+    // This previously ran on mount with an empty dependency list, which meant it
+    // fired while the onboarding screen was still up — fetching an empty
+    // watchlist — and never re-ran afterwards. Companies chosen during signup
+    // were written to the database but never appeared on the watchlist page
+    // until a manual refresh. Keying on `onboarded` fixes that and avoids
+    // issuing every dashboard request (including LLM-backed briefs) during
+    // onboarding.
+    if (!onboarded) return;
+
     api.get("/alerts").then(r => { setAllAlerts(r.data); }).catch(() => { });
     api.get("/market-summary").then(r => setSummary(r.data.summary || [])).catch(() => { });
     api.get("/trends").then(r => setTrends(r.data)).catch(() => { });
@@ -953,16 +975,41 @@ export default function App() {
     fetchTimelineEntities();
     fetchReportsList();
     fetchDailyBriefing();
-    fetchWatchlistNews();
-  }, []);
+    // Real companies this build can resolve — powers the first-run quick-add
+    // chips. Sourced from the existing search endpoint, never hardcoded.
+    api.get("/api/watchlist/search", { params: { q: "" } })
+      .then(r => setCompanySuggestions(r.data || []))
+      .catch(() => { });
+  }, [onboarded]);
 
   useEffect(() => {
-    // Automatically trigger initial analysis for watchlist items missing cached results
-    watchlists.forEach(w => {
-      if (!w.analysis_cache && w.id) {
-        handleAnalyzeCompany(w.id, false);
+    // Fill in analysis for watchlist items that have no cached result yet.
+    //
+    // Runs each item at most once per session and sequentially. Previously this
+    // fired every item in parallel on every change to `watchlists` — and since
+    // handleAnalyzeCompany refetches the watchlist, an item whose analysis did
+    // not populate would re-trigger the effect indefinitely.
+    const pending = watchlists.filter(
+      w => w.id && !w.analysis_cache && !attemptedAnalysisRef.current.has(w.id)
+    );
+    if (pending.length === 0 || backgroundAnalysisRunningRef.current) return;
+
+    backgroundAnalysisRunningRef.current = true;
+    (async () => {
+      try {
+        for (const w of pending) {
+          attemptedAnalysisRef.current.add(w.id);
+          try {
+            await api.post("/api/watchlist/analyze", { watchlist_id: w.id, force: false });
+          } catch {
+            // Leave the card in its "analysis pending" state; the user can retry.
+          }
+        }
+        await fetchWatchlists();
+      } finally {
+        backgroundAnalysisRunningRef.current = false;
       }
-    });
+    })();
   }, [watchlists]);
 
   useEffect(() => {
@@ -1255,8 +1302,7 @@ export default function App() {
     try {
       await api.post("/watchlist/add", { keyword: companyName });
       api.get("/watchlists").then(r => setWatchlists(r.data));
-      fetchWatchlistNews();
-      showToast(`${companyName} added to Watchlist!`);
+        showToast(`${companyName} added to Watchlist!`);
     } catch (err) {
       showToast("Failed to add to watchlist.");
     }
@@ -1375,17 +1421,39 @@ export default function App() {
     }
   };
 
+  // Single entry point for adding a company, shared by the search dropdown,
+  // the first-run panel and the inline add box, so all three behave identically.
+  const addCompanyToWatchlist = async (name, extra = {}) => {
+    const kw = (name || "").trim();
+    if (!kw) return false;
+
+    // Adding resolves sector/industry via the AI layer and can take a few
+    // seconds. Dismiss the search UI and acknowledge immediately so the click
+    // never feels ignored.
+    setWatchlistSearchQuery("");
+    setWatchlistSearchResults([]);
+    setWatchlistSearchDropdownOpen(false);
+    setAddingCompany(kw);
+    showToast(`Adding ${kw}...`);
+
+    try {
+      await api.post("/api/watchlist", { keyword: kw, company_name: kw, ...extra });
+      await fetchWatchlists();
+      showToast(`${kw} added to your watchlist`);
+      return true;
+    } catch {
+      showToast(`Could not add ${kw}. Please try again.`);
+      return false;
+    } finally {
+      setAddingCompany(null);
+    }
+  };
+
   const addWatchlist = async () => {
     const kw = newKeyword.trim();
     if (!kw) return;
-    try {
-      await api.post("/api/watchlist", { keyword: kw });
-      fetchWatchlists();
-      setNewKeyword("");
-      showToast(`${kw} added to watchlist`);
-    } catch {
-      showToast("Failed to add company");
-    }
+    const ok = await addCompanyToWatchlist(kw);
+    if (ok) setNewKeyword("");
   };
 
   const deleteWatchlist = async (id) => {
@@ -1622,10 +1690,9 @@ export default function App() {
             setAuthState("landing"); 
             const cachedUser = localStorage.getItem("user");
             if (cachedUser) {
-              const u = JSON.parse(cachedUser);
-              setOnboarded(localStorage.getItem(`onboarded_${u.id}`) === "true" || u.preferred_market !== "US");
+              setOnboarded(isOnboardedUser(JSON.parse(cachedUser)));
             }
-          }} 
+          }}
         />
       );
     }
@@ -2046,7 +2113,12 @@ export default function App() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                 <div>
                   <h2 style={{ fontSize: 24, fontWeight: 800, color: "#f8fafc", margin: 0, letterSpacing: "-0.02em" }}>
-                    Good Morning, {user?.full_name || user?.email?.split('@')[0] || "User"}
+                    {(() => {
+                      const hr = new Date().getHours();
+                      if (hr >= 17) return "Good Evening";
+                      if (hr >= 12) return "Good Afternoon";
+                      return "Good Morning";
+                    })()}, {user?.full_name || user?.email?.split('@')[0] || "User"}
                   </h2>
                   <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0 0" }}>
                     Today's Watchlist Intelligence • {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
@@ -2091,26 +2163,15 @@ export default function App() {
                   </div>
                   
                   {/* Autocomplete Dropdown */}
-                  {watchlistSearchDropdownOpen && watchlistSearchResults.length > 0 && (
+                  {watchlistSearchDropdownOpen && watchlistSearchQuery.trim().length > 1 && (
                     <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#0a0f1d", border: "1px solid #121b2e", borderRadius: 8, marginTop: 4, zIndex: 1000, boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5)", overflow: "hidden" }}>
                       {watchlistSearchResults.map((co, idx) => (
                         <div
                           key={idx}
-                          onClick={async () => {
-                            try {
-                              await api.post("/api/watchlist", { keyword: co.name, company_name: co.name, exchange: co.exchange });
-                              showToast(`${co.name} added to watchlist!`);
-                              setWatchlistSearchQuery("");
-                              setWatchlistSearchResults([]);
-                              setWatchlistSearchDropdownOpen(false);
-                              fetchWatchlists();
-                            } catch (err) {
-                              showToast("Failed to add company");
-                            }
-                          }}
-                          style={{ padding: "10px 14px", borderBottom: idx < watchlistSearchResults.length - 1 ? "1px solid #121b2e" : "none", cursor: "pointer", fontSize: 13, color: "#cbd5e1", transition: "background 0.15s" }}
-                          onMouseEnter={(e) => e.target.style.background = "#0e1626"}
-                          onMouseLeave={(e) => e.target.style.background = "transparent"}
+                          onClick={() => addCompanyToWatchlist(co.name, { exchange: co.exchange })}
+                          style={{ padding: "10px 14px", borderBottom: "1px solid #121b2e", cursor: "pointer", fontSize: 13, color: "#cbd5e1", transition: "background 0.15s" }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "#0e1626"}
+                          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <span style={{ fontWeight: 600, color: "#f1f5f9" }}>{co.name}</span>
@@ -2118,10 +2179,105 @@ export default function App() {
                           </div>
                         </div>
                       ))}
+
+                      {/* Anything can be tracked, not just the names we can resolve.
+                          Without this the search looks broken for unlisted companies. */}
+                      <div
+                        onClick={() => addCompanyToWatchlist(watchlistSearchQuery)}
+                        style={{ padding: "10px 14px", cursor: "pointer", fontSize: 13, color: "#cbd5e1", transition: "background 0.15s" }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#0e1626"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                      >
+                        <span style={{ color: "#06b6d4", fontWeight: 700 }}>+ Track </span>
+                        <span style={{ fontWeight: 600, color: "#f1f5f9" }}>"{watchlistSearchQuery.trim()}"</span>
+                        {watchlistSearchResults.length === 0 && (
+                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                            No exact match — track it by name and we'll monitor news and alerts for it.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
+
+              {/* ── FIRST-RUN STATE ──
+                  Shown above everything else when the user has nothing tracked yet,
+                  so the page opens on something actionable instead of on global
+                  market panels that are not about them. */}
+              {watchlists.length === 0 && (
+                <div style={{
+                  background: "linear-gradient(135deg, #0b1528 0%, #060e20 100%)",
+                  border: "1px solid #06b6d433",
+                  borderRadius: 16,
+                  padding: 28,
+                  marginBottom: 24,
+                }}>
+                  <h3 style={{ fontSize: 20, fontWeight: 800, color: "#f8fafc", margin: 0, letterSpacing: "-0.01em" }}>
+                    Build your watchlist
+                  </h3>
+                  <p style={{ fontSize: 13, color: "#94a3b8", margin: "8px 0 0 0", maxWidth: 620, lineHeight: 1.6 }}>
+                    Add the companies you care about to unlock personalised market intelligence:
+                    matched news, smart alerts, an attention score, and AI analysis for each one.
+                  </p>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 24, margin: "20px 0 4px 0" }}>
+                    {[
+                      { icon: "📰", label: "News matched to your companies" },
+                      { icon: "🔔", label: "Alerts when something moves" },
+                      { icon: "🧠", label: "AI dossier and daily brief" },
+                    ].map((f) => (
+                      <div key={f.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1" }}>
+                        <span style={{ fontSize: 15 }}>{f.icon}</span>
+                        {f.label}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 22, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => document.getElementById("watchlist-search-input")?.focus()}
+                      style={{ ...s.btnPrimary, padding: "10px 18px", fontSize: 13, fontWeight: 700 }}
+                    >
+                      Add your first stock
+                    </button>
+                    <span style={{ fontSize: 12, color: "#64748b" }}>
+                      or search any company name in the box above
+                    </span>
+                  </div>
+
+                  {companySuggestions.length > 0 && (
+                    <div style={{ marginTop: 22, borderTop: "1px solid #121b2e", paddingTop: 16 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+                        Popular starting points
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {companySuggestions.map((co) => (
+                          <button
+                            key={co.name}
+                            onClick={() => addCompanyToWatchlist(co.name, { exchange: co.exchange })}
+                            style={{
+                              background: "#0e1626",
+                              border: "1px solid #1e293b",
+                              borderRadius: 20,
+                              padding: "6px 14px",
+                              color: "#cbd5e1",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              transition: "all 0.15s",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#06b6d4"; e.currentTarget.style.color = "#f1f5f9"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#cbd5e1"; }}
+                          >
+                            + {co.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── ROW 1: MARKET HEALTH & DAILY BRIEF ── */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1.8fr", gap: 20, marginBottom: 24 }}>
@@ -2538,19 +2694,32 @@ export default function App() {
 
               {/* ── MAIN WATCHLIST DASHBOARD LIST ── */}
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: 0 }}>
-                    Watched Companies ({watchlists.length})
-                  </h3>
-                  
-                  {/* Manual search addition for tags */}
-                  <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 16 }}>
+                  <div>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
+                      Your Watchlist ({watchlists.length})
+                      {addingCompany && (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "#06b6d4" }}>
+                          Adding {addingCompany}...
+                        </span>
+                      )}
+                    </h3>
+                    {watchlists.length > 0 && (
+                      <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0 0" }}>
+                        MarketBeacon is tracking news, alerts and AI analysis for these companies.
+                        Track more to widen your coverage.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Inline add. Mirrors the search box above and accepts any name. */}
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                     <input
                       type="text"
                       value={newKeyword}
                       onChange={e => setNewKeyword(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && addWatchlist()}
-                      placeholder="Add raw keyword..."
+                      placeholder="Add a company..."
                       style={{ background: "#0e1626", border: "1px solid #121b2e", borderRadius: 6, padding: "4px 10px", color: "#e2e8f0", fontSize: 12, outline: "none", width: 180 }}
                     />
                     <button onClick={addWatchlist} style={{ ...s.btnPrimary, padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>
@@ -2560,32 +2729,36 @@ export default function App() {
                 </div>
 
                 {watchlists.length === 0 ? (
-                  <div style={{ padding: "60px 20px", textAlign: "center", border: "1px dashed #1e293b", borderRadius: 16, background: "#0b0f19" }}>
-                    <div style={{ fontSize: 40, marginBottom: 16 }}>⭐</div>
-                    <h3 style={{ fontSize: 18, color: "#f8fafc", fontWeight: 700 }}>Your Watchlist is Empty</h3>
-                    <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 20px 0", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>
-                      Start tracking companies that matter to you. Add your first company to receive AI-powered market intelligence every day.
-                    </p>
-                    <button onClick={() => document.getElementById("watchlist-search-input")?.focus()} style={s.btnPrimary}>
-                      + Add Company
-                    </button>
+                  // The first-run panel at the top of the page carries the empty
+                  // state; keep this slot quiet rather than repeating the CTA.
+                  <div style={{ padding: "28px 20px", textAlign: "center", border: "1px dashed #1e293b", borderRadius: 16, background: "#0b0f19", fontSize: 13, color: "#64748b" }}>
+                    Nothing tracked yet — add a company above and it will appear here.
                   </div>
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 18 }}>
                     {watchlists.map((item) => {
                       const analysis = item.analysis_cache || {};
                       const isAnalyzing = analyzingCompanyId === item.id;
-                      
+
+                      // A company that has never been analysed has no score. Show
+                      // that honestly rather than defaulting to a confident
+                      // "Stable / 30", which reads as a real assessment.
+                      const hasAnalysis = Boolean(item.analysis_cache);
+
                       // FEATURE 2: Attention Score mapping
-                      const attentionScore = analysis.attention_score || 30;
+                      const attentionScore = analysis.attention_score || 0;
                       const attentionStatus = analysis.attention_status || "Stable";
-                      
+
                       let attnBadgeColor = "#10b981";
                       let attnBadgeBg = "#10b98115";
                       let attnBadgeText = "🟢 Stable";
                       let attnPulse = false;
-                      
-                      if (attentionScore >= 80) {
+
+                      if (!hasAnalysis) {
+                        attnBadgeColor = "#64748b";
+                        attnBadgeBg = "#64748b15";
+                        attnBadgeText = isAnalyzing ? "⏳ Analysing..." : "⏳ Analysis pending";
+                      } else if (attentionScore >= 80) {
                         attnBadgeColor = "#ef4444";
                         attnBadgeBg = "#ef444420";
                         attnBadgeText = "🔥 Requires Immediate Attention";
@@ -2595,7 +2768,7 @@ export default function App() {
                         attnBadgeBg = "#f59e0b15";
                         attnBadgeText = "⚠️ Monitor Today";
                       }
-                      
+
                       return (
                         <div
                           key={item.id}
@@ -2710,9 +2883,15 @@ export default function App() {
                               }}>
                                 {attnBadgeText}
                               </span>
-                              <span style={{ fontSize: 11, fontFamily: "monospace", color: "#64748b" }}>
-                                Score: <strong>{attentionScore}</strong>
-                              </span>
+                              {hasAnalysis ? (
+                                <span style={{ fontSize: 11, fontFamily: "monospace", color: "#64748b" }}>
+                                  Score: <strong>{attentionScore}</strong>
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 11, color: "#64748b" }}>
+                                  AI analysis will appear here shortly
+                                </span>
+                              )}
                             </div>
 
                             {/* FEATURE 3: What Changed Since Yesterday Section */}

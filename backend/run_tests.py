@@ -20,6 +20,8 @@ TEST_MODULES = [
     "tests.test_route_protection",
     "tests.test_alerts",
     "tests.test_tenant_isolation",
+    "tests.test_watchlist_ux",
+    "tests.test_reliability",
 ]
 
 

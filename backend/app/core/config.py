@@ -89,6 +89,14 @@ class Settings:
         # ── Pipeline tuning ─────────────────────────────────────────────────
         self.NEWS_INTERVAL_MINUTES: int = _get_int("NEWS_INTERVAL_MINUTES", 10)
 
+        # Per-feed HTTP timeout (connect + read). feedparser has no timeout of
+        # its own, so without this one unresponsive host stalls the whole run.
+        self.RSS_FETCH_TIMEOUT_SECONDS: int = _get_int("RSS_FETCH_TIMEOUT_SECONDS", 15)
+
+        # Run the first ingestion pass on boot (scheduled immediately, never
+        # blocking startup). Set false to wait for the first interval instead.
+        self.RUN_INGESTION_ON_STARTUP: bool = _get_bool("RUN_INGESTION_ON_STARTUP", True)
+
         # Alert firing threshold: a post alerts when importance_score > this.
         #
         # Deliberately NOT read from the legacy ALERT_THRESHOLD variable. That

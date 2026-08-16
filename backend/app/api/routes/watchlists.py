@@ -79,9 +79,15 @@ def add_watchlist(data: dict, db: Session = Depends(get_db), current_user: User 
     favorite = data.get("favorite", False)
     priority = data.get("priority", 3)
     
+    # Running the full AI analysis inline costs ~3 sequential LLM calls. Callers
+    # that add several companies in a row (e.g. signup onboarding) pass
+    # analyze=false to stay responsive; the watchlist page then fills the
+    # analysis in on demand. Defaults to true so existing behaviour is unchanged.
+    run_analysis = data.get("analyze", True)
+
     w = add_watchlist_keyword(
-        db, 
-        keyword=kw, 
+        db,
+        keyword=kw,
         user_id=current_user.id,
         company_name=company_name,
         exchange=exchange,
@@ -91,12 +97,13 @@ def add_watchlist(data: dict, db: Session = Depends(get_db), current_user: User 
         sector=sector,
         industry=industry
     )
-    
-    try:
-        analyze_watchlist_company(db, w.id, current_user.id, force=True)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Initial analysis failed on watchlist addition for {company_name}: {e}")
+
+    if run_analysis:
+        try:
+            analyze_watchlist_company(db, w.id, current_user.id, force=True)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Initial analysis failed on watchlist addition for {company_name}: {e}")
 
     return {
         "message": "Watchlist added successfully",
@@ -206,12 +213,22 @@ def search_companies_autocomplete(
     current_user: User = Depends(get_current_user)
 ):
     q_clean = q.strip().lower()
+
+    def _exchange_for(name: str) -> str:
+        return "NSE" if name in ["TCS", "Infosys", "HDFC Bank", "Reliance Industries", "SBI", "Tata Motors"] else "NASDAQ"
+
+    # An empty query returns the full set of companies this build can resolve.
+    # Used by the watchlist first-run panel to offer real, supported suggestions
+    # instead of hardcoding a company list in the frontend.
     if not q_clean:
-        return []
-        
+        return [
+            {"name": val, "exchange": _exchange_for(val)}
+            for val in sorted(set(COMPANIES_MAP.values()))
+        ]
+
     matched = []
     seen = set()
-    
+
     for val in COMPANIES_MAP.values():
         if q_clean in val.lower() and val not in seen:
             matched.append({"name": val, "exchange": "NSE" if val in ["TCS", "Infosys", "HDFC Bank", "Reliance Industries", "SBI", "Tata Motors"] else "NASDAQ"})

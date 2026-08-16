@@ -26,6 +26,14 @@ WHAT THIS CHANGES
 4. Indexes on posts / alerts / notifications / watchlists / holdings.
    All CREATE INDEX IF NOT EXISTS.
 
+5. company_peer_caches.company_name        (UNIQUE index -> plain index)
+   A stale globally-unique index made the peer cache single-tenant: once one
+   user cached "HDFC Bank", any other user caching the same company hit
+   "duplicate key value violates unique constraint", peer/sector discovery
+   failed for them, and their watchlist entry fell back to guessed metadata.
+   The intended uniqueness, (user_id, company_name), already exists separately
+   as uq_user_company_peer and is left untouched.
+
 WHAT THIS DOES *NOT* DO
 -----------------------
 No table is dropped. No row is deleted. No column is dropped. No data is reset.
@@ -185,6 +193,61 @@ def upgrade_p0_hardening() -> None:
             logger.warning("[P0 migration] Could not create index %s on %s: %s", index_name, table, e)
 
     logger.info("[P0 migration] Index pass complete (%d/%d verified).", created, len(INDEXES))
+
+    # ── 5. company_peer_caches: drop the stale globally-unique index ────────
+    #
+    # The model declares company_name as index=True (non-unique); fresh
+    # databases are already correct. Older databases carry a UNIQUE variant of
+    # ix_company_peer_caches_company_name from an earlier model definition,
+    # which prevents two users from caching the same company.
+    if _table_exists(inspector, "company_peer_caches"):
+        try:
+            with engine.connect() as conn:
+                with conn.begin():
+                    is_unique = conn.execute(text("""
+                        SELECT i.indisunique
+                          FROM pg_class c
+                          JOIN pg_index i ON i.indexrelid = c.oid
+                         WHERE c.relname = 'ix_company_peer_caches_company_name'
+                    """)).scalar()
+
+                    if is_unique is None:
+                        logger.info("[P0 migration] ix_company_peer_caches_company_name absent; creating plain index.")
+                        conn.execute(text(
+                            "CREATE INDEX IF NOT EXISTS ix_company_peer_caches_company_name "
+                            "ON company_peer_caches (company_name);"
+                        ))
+                    elif is_unique:
+                        logger.info(
+                            "[P0 migration] ix_company_peer_caches_company_name is UNIQUE "
+                            "(blocks multi-user caching); replacing with a plain index..."
+                        )
+                        # It is a bare index, not a constraint, so DROP INDEX is correct.
+                        conn.execute(text("DROP INDEX IF EXISTS ix_company_peer_caches_company_name;"))
+                        conn.execute(text(
+                            "CREATE INDEX IF NOT EXISTS ix_company_peer_caches_company_name "
+                            "ON company_peer_caches (company_name);"
+                        ))
+                        logger.info("[P0 migration] Replaced with a non-unique index. No rows were touched.")
+                    else:
+                        logger.info("[P0 migration] ix_company_peer_caches_company_name already non-unique.")
+
+                    # The real per-tenant uniqueness. Additive; never dropped.
+                    exists_uq = conn.execute(text("""
+                        SELECT 1 FROM pg_constraint con
+                          JOIN pg_class rel ON rel.oid = con.conrelid
+                         WHERE rel.relname = 'company_peer_caches'
+                           AND con.conname = 'uq_user_company_peer'
+                    """)).scalar()
+                    if not exists_uq:
+                        logger.info("[P0 migration] Adding uq_user_company_peer (user_id, company_name)...")
+                        conn.execute(text(
+                            "ALTER TABLE company_peer_caches "
+                            "ADD CONSTRAINT uq_user_company_peer UNIQUE (user_id, company_name);"
+                        ))
+        except Exception as e:
+            logger.warning("[P0 migration] Could not normalise company_peer_caches indexes: %s", e)
+
     logger.info("[P0 migration] Hardening schema migration finished.")
 
 

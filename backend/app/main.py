@@ -90,11 +90,21 @@ async def lifespan(app: FastAPI):
             "="*80 + "\n"
         )
 
-    # Start RSS news scheduler
-    news_scheduler = start_scheduler(interval_minutes=settings.NEWS_INTERVAL_MINUTES)
+    # Start background schedulers. Both return immediately; ingestion runs on
+    # their worker threads. A scheduler failure must never stop the API from
+    # coming up, so each is guarded and the failure is logged loudly.
+    news_scheduler = None
+    twitter_scheduler = None
 
-    # Start Twitter monitor scheduler
-    twitter_scheduler = start_twitter_scheduler()
+    try:
+        news_scheduler = start_scheduler(interval_minutes=settings.NEWS_INTERVAL_MINUTES)
+    except Exception as e:
+        logger.exception("Failed to start the news scheduler; API will run without RSS ingestion: %s", e)
+
+    try:
+        twitter_scheduler = start_twitter_scheduler()
+    except Exception as e:
+        logger.exception("Failed to start the Twitter scheduler; API will run without tweet monitoring: %s", e)
 
     # Optional cache warming. Disabled by default: it previously ran LLM-backed
     # dossier generation for a hardcoded account on every single boot.
@@ -119,8 +129,13 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("MarketBeacon AI shutting down...")
-    news_scheduler.shutdown(wait=False)
-    twitter_scheduler.shutdown(wait=False)
+    for name, sched in (("news", news_scheduler), ("twitter", twitter_scheduler)):
+        if sched is None:
+            continue
+        try:
+            sched.shutdown(wait=False)
+        except Exception as e:
+            logger.warning("Error shutting down the %s scheduler: %s", name, e)
     
     # Close shared QdrantClient singleton and release files lock
     try:
